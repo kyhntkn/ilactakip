@@ -297,15 +297,19 @@ function pieChart(items){
   sv+='</svg>';
   const leg=items.filter(x=>x.o).map((x,i)=>`<div class="pieItem"><i style="background:${col(i)}"></i><span>${esc(x.label)}</span><b>${fq(x.o)}</b><em>%${(x.o/tot*100).toLocaleString('tr-TR',{maximumFractionDigits:1})}</em></div>`).join('');
   return `<div class="pieWrap">${sv}<div class="pieLeg">${leg}</div></div>`}
-function budgetBars(items,color){color=color||GC2.gold;
+function budgetBars(items,color,color2){color=color||GC2.gold;color2=color2||GC2.dark;
   if(!items.length)return '<p class="hint">Veri yok.</p>';
   const W=560,H=300,pl=54,pr=10,pt=14,pb=80,pw=W-pl-pr,ph=H-pt-pb;
-  const maxV=Math.max(1,...items.map(x=>x.b));const gw=pw/items.length,bw=Math.min(46,gw*0.6),yv=v=>pt+ph-v/maxV*ph;
+  const two=items.some(x=>x.f!==undefined);
+  const maxV=Math.max(1,...items.map(x=>Math.max(x.b||0,x.f||0)));const gw=pw/items.length,bw=two?Math.min(26,gw*0.38):Math.min(46,gw*0.6),yv=v=>pt+ph-v/maxV*ph;
   let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" font-family="Segoe UI,Arial" font-size="11">`;
   for(let t=0;t<=4;t++){const y=pt+ph*(1-t/4);s+=`<line x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}" stroke="#eef2f6"/><text x="${pl-6}" y="${y+4}" text-anchor="end" fill="#8a97a6">${fq(maxV*t/4)}</text>`}
-  items.forEach((x,i)=>{const cx=pl+gw*i+gw/2,bx=cx-bw/2,y=yv(x.b),h=pt+ph-y;
+  items.forEach((x,i)=>{const cx=pl+gw*i+gw/2,bx=two?cx-bw-1:cx-bw/2,y=yv(x.b),h=pt+ph-y;
     if(x.b>0)s+=`<rect x="${bx}" y="${y}" width="${bw}" height="${h}" rx="3" fill="${color}"><title>${esc(x.label)} — ${esc(x.tip||'bütçe')}: ${fq(x.b)}</title></rect>`;
-    s+=`<text x="${cx}" y="${y-5}" text-anchor="middle" fill="#1c2630" font-size="10">${x.b?fq(x.b):''}</text>`;
+    s+=`<text x="${bx+bw/2}" y="${y-5}" text-anchor="middle" fill="#1c2630" font-size="${two?9:10}">${x.b?fq(x.b):''}</text>`;
+    if(two){const fv=x.f||0,fy=yv(fv),fh=pt+ph-fy,fx=cx+1;
+      if(fv>0)s+=`<rect x="${fx}" y="${fy}" width="${bw}" height="${fh}" rx="3" fill="${color2}"><title>${esc(x.label)} — fiili: ${fq(fv)}</title></rect>`;
+      s+=`<text x="${fx+bw/2}" y="${fy-5}" text-anchor="middle" fill="#1c2630" font-size="9">${fv?fq(fv):''}</text>`}
     s+=`<text transform="rotate(-30 ${cx} ${H-pb+14})" x="${cx}" y="${H-pb+14}" text-anchor="end" fill="#1c2630">${esc(x.label)}</text>`});
   return s+'</svg>'}
 function defaultRange(rows,K){const L=K.length;
@@ -347,7 +351,7 @@ function gBody(rows,K){
     <div class="card"><h3>Bütçe — ${esc(per)} (${esc(filterName)})</h3>${budgetBars(budItems)}</div>
     <div class="card"><h3>Revize bütçe — ${esc(per)} (${esc(filterName)})</h3>${budgetBars(revItems,'#7a4fb5')}</div>
     <div class="card">${card2}</div>
-    <div class="card" style="grid-column:1/-1"><h3>Ürün bazında sipariş — ${esc(per)}${GD.scope==='musteri'&&GD.tc!=='all'?' ('+esc(cname(GD.tc))+')':''}</h3>${budgetBars(prodItems.map(p=>({label:p.label,b:p.o,tip:'sipariş'})),GC2.light)}</div>
+    <div class="card" style="grid-column:1/-1"><h3>Ürün bazında sipariş / fiili — ${esc(per)}${GD.scope==='musteri'&&GD.tc!=='all'?' ('+esc(cname(GD.tc))+')':''}</h3><div class="legend"><span><i style="background:${GC2.light}"></i>Sipariş</span><span><i style="background:${GC2.dark}"></i>Fiili</span></div>${budgetBars(prodItems.map(p=>({label:p.label,b:p.o,f:p.f,tip:'sipariş'})),GC2.light,GC2.dark)}</div>
   </div>`}
 function vGrafik(){
   if(!S.customers.length)return '<div class="card">Önce müşteri tanımlayın.</div>';
@@ -419,11 +423,21 @@ async function exportDegisim(){
 function serInfo(c,k,i){
   const it=(S.orders[c]||[]).find(it=>(it.code||it.name)===k),q0=it?(valArr(it)[i]||0):0;
   const p=P(c).find(p=>(nc(p.code)||p.name)===k),batch=p?(+p.batch||0):0;
-  const count=batch>0&&q0>0?Math.ceil(q0/batch):0;
+  const calc=batch>0&&q0>0?Math.ceil(q0/batch):0;
   const mk=S.start?mkey(S.start.y,S.start.m,i):'',all=(((S.series||{})[c]||{})[k]||{})[mk]||[];
+  const ov=(S.serN||{})[c+'|'+k+'|'+mk],count=(calc>0&&ov&&ov.calc===calc)?Math.max(0,ov.n):calc;
   const rows=all.slice(0,count);let q=0,t=0;rows.forEach(x=>{q+=+x.q||0;t+=+x.t||0});
-  return {q0,batch,count,rows,q,t,mk,has:rows.some(x=>x.q!==''&&x.q!==undefined)}}
+  return {q0,batch,count,calc,rows,q,t,mk,has:rows.some(x=>x.q!==''&&x.q!==undefined)}}
 const derived=(c,k,i)=>S.start?serInfo(c,k,i).has:false;
+function serSync(b){const inf=serInfo(b.c,b.k,b.i);
+  if(S.actual[b.c]&&S.actual[b.c][b.k]||inf.has){S.actual[b.c]=S.actual[b.c]||{};const a=S.actual[b.c][b.k]=S.actual[b.c][b.k]||z();a[b.i]=inf.has?inf.q:0}}
+function serSetN(b,n,calc){S.serN=S.serN||{};const key=b.c+'|'+b.k+'|'+mkey(S.start.y,S.start.m,b.i);if(n===null)delete S.serN[key];else S.serN[key]={n:Math.max(0,n),calc}}
+function delSer(bi,j){const b=SB[bi];if(!b)return;const inf=serInfo(b.c,b.k,b.i);
+  if(!confirm((j+1)+'. seri satırı silinsin mi?\nAltındaki satırlar yukarı kayar. (Varsayılana dönmek için "↺ Satırları yeniden oluştur" kullanılabilir.)'))return;
+  const kk=((S.series||{})[b.c]||{})[b.k],arr=kk&&kk[inf.mk];if(arr&&j<arr.length)arr.splice(j,1);
+  serSetN(b,inf.count-1,inf.calc);serSync(b);save();render()}
+function addSerRow(bi){const b=SB[bi];if(!b)return;const inf=serInfo(b.c,b.k,b.i);serSetN(b,inf.count+1,inf.calc);save();render()}
+function resetSer(bi){const b=SB[bi];if(!b)return;serSetN(b,null);serSync(b);save();render()}
 function setSer(bi,r,f,v){const b=SB[bi];if(!b)return;
   const mk=mkey(S.start.y,S.start.m,b.i);S.series[b.c]=S.series[b.c]||{};
   const kk=S.series[b.c][b.k]=S.series[b.c][b.k]||{},arr=kk[mk]=kk[mk]||[];
@@ -444,11 +458,11 @@ function vSeri(l){
   if(!items.length)return r+'<p class="hint">Bu ay için sipariş yok.</p></div>';
   items.forEach(e=>{const bi=SB.length;SB.push({c:e.cid,k:e.k,i:SM});const inf=serInfo(e.cid,e.k,SM);
     r+=`<div style="margin:12px 0 18px"><div><b>${esc(e.name)}</b> <span class="hint">(${esc(e.code)})</span> — Sipariş: <b>${fq(inf.q0)}</b> kutu`+
-    (inf.batch?` · Parti: <b>${fq(inf.batch)}</b> kutu · İstenen seri: <b>${inf.count}</b>`+(inf.q0%inf.batch?` <span class="hint">(${(inf.q0/inf.batch).toLocaleString('tr-TR',{maximumFractionDigits:2})} seri, yukarı yuvarlandı)</span>`:''):' · <span class="neg">Parti büyüklüğü tanımlı değil ("Ürün / Parti Tanımı" sekmesi)</span>')+'</div>';
-    if(inf.count){r+=`<table style="width:auto;margin-top:6px"><tr><th class="l">Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Teslimat Tarihi</th><th class="l">Açıklama</th></tr>`;
+    (inf.batch?` · Parti: <b>${fq(inf.batch)}</b> kutu · İstenen seri: <b>${inf.calc}</b>`+(inf.count!==inf.calc?` · Gösterilen: <b>${inf.count}</b>`:'')+(inf.q0%inf.batch?` <span class="hint">(${(inf.q0/inf.batch).toLocaleString('tr-TR',{maximumFractionDigits:2})} seri, yukarı yuvarlandı)</span>`:''):' · <span class="neg">Parti büyüklüğü tanımlı değil ("Ürün / Parti Tanımı" sekmesi)</span>')+(inf.batch?` <span class="noprint"><button onclick="addSerRow(${bi})" style="padding:2px 8px;margin-left:8px">+ Satır ekle</button>${inf.count!==inf.calc?` <button onclick="resetSer(${bi})" style="padding:2px 8px">↺ Satırları yeniden oluştur</button>`:''}</span>`:'')+'</div>';
+    if(inf.count){r+=`<table style="width:auto;margin-top:6px"><tr><th class="l">Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Teslimat Tarihi</th><th class="l">Açıklama</th><th class="noprint"></th></tr>`;
       for(let j=0;j<inf.count;j++){const x=inf.rows[j]||{},qv=x.q===''||x.q===undefined?'':x.q,tv=x.t===''||x.t===undefined?'':x.t;
-        r+=`<tr><td class="l">${j+1}. seri</td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:120px;text-align:right" value="${qv===''||qv==null?'':fq(+qv)}" onchange="setSer(${bi},${j},'q',qVal(this.value));this.value=qVal(this.value)===''?'':fq(qVal(this.value))"></td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:150px;text-align:right" value="${tv===''||tv==null?'':fmt2(+tv)}" onchange="setSer(${bi},${j},'t',tlVal(this.value));this.value=this.value?fmt2(tlVal(this.value)):''"></td><td class="l"><input type="text" style="width:130px" value="${esc(x.p||'')}" onchange="setSer(${bi},${j},'p',this.value)"></td><td class="l"><input type="date" value="${esc(x.d||'')}" onchange="setSer(${bi},${j},'d',this.value)"></td><td class="l"><input type="text" style="width:260px" value="${esc(x.n||'')}" onchange="setSer(${bi},${j},'n',this.value)"></td></tr>`}
-      r+=`<tr class="t"><td class="l">Toplam</td><td id="tq${bi}">${fq(inf.q)}</td><td id="tt${bi}">${fmt2(inf.t)}</td><td></td><td></td><td></td></tr></table>`}
+        r+=`<tr><td class="l">${j+1}. seri</td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:120px;text-align:right" value="${qv===''||qv==null?'':fq(+qv)}" onchange="setSer(${bi},${j},'q',qVal(this.value));this.value=qVal(this.value)===''?'':fq(qVal(this.value))"></td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:150px;text-align:right" value="${tv===''||tv==null?'':fmt2(+tv)}" onchange="setSer(${bi},${j},'t',tlVal(this.value));this.value=this.value?fmt2(tlVal(this.value)):''"></td><td class="l"><input type="text" style="width:130px" value="${esc(x.p||'')}" onchange="setSer(${bi},${j},'p',this.value)"></td><td class="l"><input type="date" value="${esc(x.d||'')}" onchange="setSer(${bi},${j},'d',this.value)"></td><td class="l"><input type="text" style="width:260px" value="${esc(x.n||'')}" onchange="setSer(${bi},${j},'n',this.value)"></td><td class="noprint"><button title="Bu satırı sil" onclick="delSer(${bi},${j})" style="padding:2px 7px;color:#b3261e">🗑</button></td></tr>`}
+      r+=`<tr class="t"><td class="l">Toplam</td><td id="tq${bi}">${fq(inf.q)}</td><td id="tt${bi}">${fmt2(inf.t)}</td><td></td><td></td><td></td><td class="noprint"></td></tr></table>`}
     r+='</div>'});
   return r+'</div>'}
 function monthRows(sc,mi){const out=[];
