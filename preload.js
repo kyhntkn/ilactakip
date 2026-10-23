@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('desktop', {
   chooseShared: () => ipcRenderer.invoke('shared:choose'),
   syncShared: () => ipcRenderer.invoke('shared:sync'),
   clearShared: () => ipcRenderer.invoke('shared:clear'),
+  refocus: () => ipcRenderer.send('refocus'),
   openDataDir: () => ipcRenderer.invoke('open:data'),
   openBackups: () => ipcRenderer.invoke('open:backups'),
   onStatus: cb => { statusCb = cb; },

@@ -77,6 +77,8 @@ app.whenReady().then(async () => {
     if (r.canceled || !r.filePaths[0]) return store.status();
     return store.setSharedDir(r.filePaths[0]);
   });
+  // Windows'ta alert/confirm sonrası giriş alanlarının donmasını önler
+  ipcMain.on('refocus', () => { if (win && !win.isDestroyed()) { win.blur(); win.focus(); win.webContents.focus(); } });
   ipcMain.handle('shared:sync', () => store.syncShared());
   ipcMain.handle('shared:clear', () => store.clearShared());
   ipcMain.handle('open:data', () => shell.openPath(store.paths.dataDir));
