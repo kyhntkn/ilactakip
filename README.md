@@ -25,9 +25,9 @@ Sipariş / bütçe / fiili takibi, raporlar ve Excel çıktıları aynen çalı�
    - Ya da komut satırı: `git init && git add . && git commit -m "ilk" && git branch -M main && git remote add origin <depo-adresi> && git push -u origin main`
 3. Depoda **Actions → "Uygulamayı derle" → Run workflow** deyin. (Yaklaşık 5–10 dk.)
 4. İş bitince çalıştırma sayfasının altındaki **Artifacts** bölümünden indirin:
-   - `uygulama-windows-latest` → `IlacSiparisTakip-Kurulum-1.0.1.exe` (kurulum) ve `IlacSiparisTakip-Tasinabilir-1.0.1.exe`
+   - `uygulama-windows-latest` → `IlacSiparisTakip-Kurulum-1.0.2.exe` (kurulum) ve `IlacSiparisTakip-Tasinabilir-1.0.2.exe`
    - `uygulama-macos-latest` → `.dmg`, `uygulama-ubuntu-latest` → `.AppImage`  (yalnızca Windows lazımsa diğerlerini yok sayın)
-5. Alternatif: `git tag v1.0.1 && git push --tags` → derleme bitince dosyalar **Releases** sayfasına da eklenir.
+5. Alternatif: `git tag v1.0.2 && git push --tags` → derleme bitince dosyalar **Releases** sayfasına da eklenir.
 
 > Windows'ta ilk çalıştırmada "SmartScreen" uyarısı çıkabilir (program imzasız): *Ek bilgi → Yine de çalıştır*.
 > `GITHUB_TOKEN` ayrıca tanımlamanız gerekmez, otomatik gelir.
