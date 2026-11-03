@@ -801,14 +801,16 @@ function upload(){
     if(bud)S[tgt]={};
     // Bütçe / revize bütçe dosyası yüklendiğinde de gösterim dönemini dosyanın ilk ayına göre güncelle.
     // Böylece bütçe verisi mevcut S.start (ör. Ekim) yüzünden yanlış dönemin dışında kalmaz.
+    if(!bud)S.start=pick;          // sipariş dosyasının ilk ayı yeni dönem başlangıcıdır (Ekim'de kalmasın)
     if(!S.start)S.start=pick;
     if(bud)compareYear=pick.y;
     migrateBudget();
+    let newArc=null;
     if(!bud){const ad={};let any=false;
       Object.keys(by).forEach(c=>{if((S.orders[c]||[]).length){ad[c]=JSON.parse(JSON.stringify(S.orders[c]));any=true}});
-      if(any){S.arsiv=S.arsiv||[];S.arsiv.push({id:'a'+Date.now(),ts:new Date().toISOString(),data:ad,
+      if(any){S.arsiv=S.arsiv||[];newArc='a'+Date.now();S.arsiv.push({id:newArc,ts:new Date().toISOString(),data:ad,
         keys:[...new Set(Object.values(ad).flat().flatMap(it=>Object.keys(it.v||{})))]})}}
-    if(!bud){S.prev={};DARC='prev';}
+    if(!bud){S.prev={};DARC=newArc||'prev';}
     Object.keys(by).forEach(c=>{
       if(!bud){Object.keys(S.manualMark||{}).forEach(x=>{if(x.startsWith(c+'|'))delete S.manualMark[x]});S.prev=S.prev||{};S.prev[c]={ts:new Date().toISOString(),items:JSON.parse(JSON.stringify(S.orders[c]||[]))};
         S.orders[c]=by[c].filter(it=>Object.keys(it.v||{}).length);
