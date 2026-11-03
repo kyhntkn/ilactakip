@@ -141,23 +141,24 @@ let DA=null,DB='cur';
 function curSnap(){const d={};Object.keys(S.orders||{}).forEach(c=>d[c]=JSON.parse(JSON.stringify(S.orders[c]||[])));return d}
 function verKeys(v){const set=new Set();Object.values(v.data||{}).forEach(list=>(list||[]).forEach(it=>Object.keys(it.v||{}).forEach(k=>set.add(k))));return [...set]}
 function versionList(){
-  const arr=(S.arsiv||[]).map(a=>({id:a.id,ts:a.ts,data:a.data,keys:a.keys||[]}));
-  arr.push({id:'cur',ts:new Date().toISOString(),data:curSnap(),current:true});
+  const arr=(S.arsiv||[]).map(a=>({id:a.id,ts:a.ts,file:a.file||null,loaded:a.loaded||null,data:a.data,keys:a.keys||[]}));
+  arr.push({id:'cur',ts:S.lastLoaded||null,file:S.lastFile||null,loaded:S.lastLoaded||null,data:curSnap(),current:true});
   arr.forEach(v=>{if(!v.keys||!v.keys.length)v.keys=verKeys(v)});
   return arr}
 function verPeriod(v){const ks=(v.keys||[]).map(k=>{const [y,m]=k.split('-').map(Number);return y*12+m});
   if(!ks.length)return '-';const lo=Math.min(...ks),hi=Math.max(...ks);return TR[lo%12]+' '+Math.floor(lo/12)+' – '+TR[hi%12]+' '+Math.floor(hi/12)}
 function verLabel(v){return (v.current?'Mevcut (son yükleme)':new Date(v.ts).toLocaleString('tr-TR'))+' — '+verPeriod(v)}
-function diffItems(cid,prevItems,curItems){
+function diffItems(cid,prevItems,curItems,covB){
   const pm=agg(prevItems||[]),cm=agg(curItems||[]),keys=new Set([...Object.keys(pm),...Object.keys(cm)]),out=[];
   keys.forEach(k=>{const a=pm[k],b=cm[k],mks=new Set([...Object.keys(a?a.v:{}),...Object.keys(b?b.v:{})]);
-    mks.forEach(mk=>{const o=a?(a.v[mk]||0):0,n=b?(b.v[mk]||0):0;if(o===n)return;
+    mks.forEach(mk=>{if(covB&&!covB.has(mk))return;const o=a?(a.v[mk]||0):0,n=b?(b.v[mk]||0):0;if(o===n)return;
       const t=!a?'Yeni ürün':!b?'Kaldırıldı':o===0?'Yeni sipariş':n===0?'Sipariş iptal':'Miktar değişti';
       const ref=b||a;out.push({cust:cname(cid),mk,ay:mkLabel(mk),name:ref.name,code:ref.code,o,n,d:n-o,p:o?(n-o)/o*100:null,t})})});
   return out}
 function diffPair(vA,vB){
   const ids=new Set([...Object.keys(vA.data||{}),...Object.keys(vB.data||{})]),all=[];
-  ids.forEach(cid=>diffItems(cid,(vA.data||{})[cid],(vB.data||{})[cid]).forEach(x=>all.push(x)));
+  const covB=new Set(vB.keys||[]);
+  ids.forEach(cid=>diffItems(cid,(vA.data||{})[cid],(vB.data||{})[cid],covB).forEach(x=>all.push(x)));
   return all.sort((x,y)=>{const a=x.mk.split('-').map(Number),b=y.mk.split('-').map(Number);return (a[0]*12+a[1])-(b[0]*12+b[1])||x.cust.localeCompare(y.cust,'tr')||String(x.code).localeCompare(String(y.code))})}
 function pickPair(vs){
   let ia=vs.findIndex(v=>v.id===DA),ib=vs.findIndex(v=>v.id===DB);
@@ -391,21 +392,22 @@ let ARV=null;
 function delArc(id){if(!confirm('Bu arşiv kaydı silinsin mi?'))return;S.arsiv=(S.arsiv||[]).filter(a=>a.id!==id);
   if(DB===id)DB='cur';if(DA===id)DA=null;if(ARV===id)ARV=null;save();render()}
 function vArsiv(){
-  const list=S.arsiv||[];
-  let r=`<div class="card"><h3>Sipariş arşivi</h3><p class="hint">Her 15 aylık sipariş yüklemesinde, bir önceki sipariş verisi otomatik arşivlenir. Burada geçmiş yüklemeleri görüntüleyebilir, silebilir ya da Sipariş Değişiklikleri'nde mevcut verilerle karşılaştırabilirsiniz.</p>`;
-  if(!list.length)return r+'<p class="hint">Henüz arşivlenmiş sipariş yok. İkinci sipariş yüklemesinden sonra burada görünür.</p></div>';
-  r+=`<table><tr><th>#</th><th class="l">Arşivlenme</th><th class="l">Dönem</th><th>Müşteri</th><th></th></tr>`;
-  list.forEach((a,i)=>{r+=`<tr><td>${i+1}</td><td class="l">${esc(new Date(a.ts).toLocaleString('tr-TR'))}</td><td class="l">${esc(arcLabel(a))}</td><td>${Object.keys(a.data).length}</td>
-    <td><button onclick="ARV='${a.id}';render()">Görüntüle</button> <button onclick="DB='${a.id}';T='degisim';render()">Karşılaştır</button> <button class="dn" onclick="delArc('${a.id}')">Sil</button></td></tr>`});
+  const vs=versionList().slice().reverse();
+  let r=`<div class="card"><h3>Yüklemeler (arşiv)</h3><p class="hint">Her sipariş yüklemesi burada listelenir. Görüntüle ile o yüklemenin tüm siparişlerini, Karşılaştır ile Sipariş Değişiklikleri'nde iki yüklemeyi seçip farkları görebilirsiniz.</p>`;
+  r+=`<table><tr><th>#</th><th class="l">Dosya</th><th class="l">Yüklenme</th><th class="l">Dönem</th><th>Müşteri</th><th></th></tr>`;
+  vs.forEach((v,i)=>{r+=`<tr><td>${vs.length-i}</td><td class="l">${esc(v.file||'-')}${v.current?' <b>(son yükleme)</b>':''}</td>
+    <td class="l">${esc(v.loaded||v.ts?new Date(v.loaded||v.ts).toLocaleString('tr-TR'):'-')}</td><td class="l">${esc(verPeriod(v))}</td><td>${Object.keys(v.data||{}).length}</td>
+    <td><button onclick="ARV='${v.id}';render()">Görüntüle</button> <button onclick="DB='${v.id}';T='degisim';render()">Karşılaştır</button>${v.current?'':` <button class="dn" onclick="delArc('${v.id}')">Sil</button>`}</td></tr>`});
   r+='</table></div>';
-  const a=list.find(x=>x.id===ARV);
-  if(!a)return r;
-  const ks=[...(a.keys||[])].sort((x,y)=>{const [y1,m1]=x.split('-').map(Number),[y2,m2]=y.split('-').map(Number);return y1*12+m1-(y2*12+m2)});
-  r+=`<div class="card"><h3>Arşiv — ${esc(new Date(a.ts).toLocaleString('tr-TR'))}</h3><div style="overflow-x:auto"><table class="cmpt"><tr><th class="l">Müşteri</th><th class="l">Ürün</th><th class="l">Kod</th>${ks.map(k=>`<th>${esc(mkLabel(k))}</th>`).join('')}<th>Toplam</th></tr>`;
-  Object.keys(a.data).forEach(cid=>{(a.data[cid]||[]).forEach(it=>{
+  const v=vs.find(x=>x.id===ARV);
+  if(!v)return r;
+  const ks=[...(v.keys||[])].sort((x,y)=>{const [y1,m1]=x.split('-').map(Number),[y2,m2]=y.split('-').map(Number);return y1*12+m1-(y2*12+m2)});
+  r+=`<div class="card"><h3>${esc(v.file||'Yükleme')} — ${esc(verPeriod(v))}</h3><div style="overflow-x:auto"><table class="cmpt"><tr><th class="l">Müşteri</th><th class="l">Ürün</th><th class="l">Kod</th>${ks.map(k=>`<th>${esc(mkLabel(k))}</th>`).join('')}<th>Toplam</th></tr>`;
+  Object.keys(v.data||{}).forEach(cid=>{(v.data[cid]||[]).forEach(it=>{
     const vals=ks.map(k=>(it.v||{})[k]||0);
-    r+=`<tr><td class="l">${esc(cname(cid))}</td><td class="l">${esc(it.name)}</td><td class="l">${esc(it.code)}</td>${vals.map(v=>`<td>${fq(v)}</td>`).join('')}<td><b>${fq(sum(vals))}</b></td></tr>`})});
+    r+=`<tr><td class="l">${esc(cname(cid))}</td><td class="l">${esc(it.name)}</td><td class="l">${esc(it.code)}</td>${vals.map(x=>`<td>${fq(x)}</td>`).join('')}<td><b>${fq(sum(vals))}</b></td></tr>`})});
   return r+'</table></div></div>'}
+
 function vDegisim(){
   const vs=versionList();
   if(vs.length<2)return '<div class="card"><p class="hint">Karşılaştırma için en az iki yükleme gerekir. İkinci sipariş yüklemesinden sonra burada görünür.</p></div>';
@@ -825,9 +827,9 @@ function upload(){
     let newArc=null;
     if(!bud){const ad={};let any=false;
       Object.keys(S.orders||{}).forEach(c=>{if((S.orders[c]||[]).length){ad[c]=JSON.parse(JSON.stringify(S.orders[c]));any=true}});
-      if(any){S.arsiv=S.arsiv||[];newArc='a'+Date.now();S.arsiv.push({id:newArc,ts:new Date().toISOString(),data:ad,
+      if(any){S.arsiv=S.arsiv||[];newArc='a'+Date.now();S.arsiv.push({id:newArc,ts:new Date().toISOString(),file:S.lastFile||null,loaded:S.lastLoaded||null,data:ad,
         keys:[...new Set(Object.values(ad).flat().flatMap(it=>Object.keys(it.v||{})))]})}}
-    if(!bud){S.prev={};DA=newArc;DB='cur';}
+    if(!bud){S.prev={};DA=newArc;DB='cur';S.lastFile=f.name;S.lastLoaded=new Date().toISOString();}
     Object.keys(by).forEach(c=>{
       if(!bud){Object.keys(S.manualMark||{}).forEach(x=>{if(x.startsWith(c+'|'))delete S.manualMark[x]});S.prev=S.prev||{};S.prev[c]={ts:new Date().toISOString(),items:JSON.parse(JSON.stringify(S.orders[c]||[]))};
         S.orders[c]=by[c].filter(it=>Object.keys(it.v||{}).length);
