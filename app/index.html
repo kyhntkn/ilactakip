@@ -137,21 +137,33 @@ function migrateOrders(){if(!S.start)return;Object.keys(S.orders||{}).forEach(c=
 function agg(items){const m={};(items||[]).forEach(it=>{const k=nc(it.code)||it.name;const e=m[k]=m[k]||{name:it.name,code:it.code,v:{}};
   Object.keys(it.v||{}).forEach(mk=>{e.v[mk]=(e.v[mk]||0)+(+it.v[mk]||0)})});return m}
 function mkLabel(mk){const [y,mo]=mk.split('-').map(Number);return TR[mo]+' '+y}
-let DARC='prev';
-function baseFor(cid){if(DARC!=='prev'){const a=(S.arsiv||[]).find(x=>x.id===DARC);return a&&a.data[cid]?{items:a.data[cid],ts:a.ts}:null}
-  const p=(S.prev||{})[cid];return p?{items:p.items,ts:p.ts}:null}
-function arcLabel(a){const ks=(a.keys||[]).map(k=>{const [y,m]=k.split('-').map(Number);return y*12+m});
-  if(!ks.length)return '-';const lo=Math.min(...ks),hi=Math.max(...ks);
-  return TR[lo%12]+' '+Math.floor(lo/12)+' – '+TR[hi%12]+' '+Math.floor(hi/12)}
-function diffRows(c){const prev=baseFor(c.id);if(!prev)return[];
-  const pm=agg(prev.items),cm=agg(S.orders[c.id]||[]),keys=new Set([...Object.keys(pm),...Object.keys(cm)]),out=[];
+let DA=null,DB='cur';
+function curSnap(){const d={};Object.keys(S.orders||{}).forEach(c=>d[c]=JSON.parse(JSON.stringify(S.orders[c]||[])));return d}
+function verKeys(v){const set=new Set();Object.values(v.data||{}).forEach(list=>(list||[]).forEach(it=>Object.keys(it.v||{}).forEach(k=>set.add(k))));return [...set]}
+function versionList(){
+  const arr=(S.arsiv||[]).map(a=>({id:a.id,ts:a.ts,data:a.data,keys:a.keys||[]}));
+  arr.push({id:'cur',ts:new Date().toISOString(),data:curSnap(),current:true});
+  arr.forEach(v=>{if(!v.keys||!v.keys.length)v.keys=verKeys(v)});
+  return arr}
+function verPeriod(v){const ks=(v.keys||[]).map(k=>{const [y,m]=k.split('-').map(Number);return y*12+m});
+  if(!ks.length)return '-';const lo=Math.min(...ks),hi=Math.max(...ks);return TR[lo%12]+' '+Math.floor(lo/12)+' – '+TR[hi%12]+' '+Math.floor(hi/12)}
+function verLabel(v){return (v.current?'Mevcut (son yükleme)':new Date(v.ts).toLocaleString('tr-TR'))+' — '+verPeriod(v)}
+function diffItems(cid,prevItems,curItems){
+  const pm=agg(prevItems||[]),cm=agg(curItems||[]),keys=new Set([...Object.keys(pm),...Object.keys(cm)]),out=[];
   keys.forEach(k=>{const a=pm[k],b=cm[k],mks=new Set([...Object.keys(a?a.v:{}),...Object.keys(b?b.v:{})]);
     mks.forEach(mk=>{const o=a?(a.v[mk]||0):0,n=b?(b.v[mk]||0):0;if(o===n)return;
-      const t=(!a?'Yeni ürün':!b?'Kaldırıldı':o===0?'Yeni sipariş':n===0?'Sipariş iptal':'Miktar değişti')+((S.manualMark||{})[c.id+'|'+k+'|'+mk]?' (manuel)':'');
-      const ref=b||a;out.push({cust:c.name,mk,ay:mkLabel(mk),name:ref.name,code:ref.code,o,n,d:n-o,p:o?(n-o)/o*100:null,t})})});
+      const t=!a?'Yeni ürün':!b?'Kaldırıldı':o===0?'Yeni sipariş':n===0?'Sipariş iptal':'Miktar değişti';
+      const ref=b||a;out.push({cust:cname(cid),mk,ay:mkLabel(mk),name:ref.name,code:ref.code,o,n,d:n-o,p:o?(n-o)/o*100:null,t})})});
   return out}
-function diffAll(cs){const all=[];cs.forEach(c=>diffRows(c).forEach(x=>all.push(x)));
+function diffPair(vA,vB){
+  const ids=new Set([...Object.keys(vA.data||{}),...Object.keys(vB.data||{})]),all=[];
+  ids.forEach(cid=>diffItems(cid,(vA.data||{})[cid],(vB.data||{})[cid]).forEach(x=>all.push(x)));
   return all.sort((x,y)=>{const a=x.mk.split('-').map(Number),b=y.mk.split('-').map(Number);return (a[0]*12+a[1])-(b[0]*12+b[1])||x.cust.localeCompare(y.cust,'tr')||String(x.code).localeCompare(String(y.code))})}
+function pickPair(vs){
+  let ia=vs.findIndex(v=>v.id===DA),ib=vs.findIndex(v=>v.id===DB);
+  if(ib<0)ib=vs.length-1;
+  if(ia<0)ia=Math.max(0,ib-1);
+  return {ia,ib}}
 let MC='';
 function vManuel(){
   if(!S.customers.length)return '<div class="card">Önce müşteri tanımlayın.</div>';
@@ -377,14 +389,14 @@ function printGrafik(){
 let DC='all';
 let ARV=null;
 function delArc(id){if(!confirm('Bu arşiv kaydı silinsin mi?'))return;S.arsiv=(S.arsiv||[]).filter(a=>a.id!==id);
-  if(DARC===id)DARC='prev';if(ARV===id)ARV=null;save();render()}
+  if(DB===id)DB='cur';if(DA===id)DA=null;if(ARV===id)ARV=null;save();render()}
 function vArsiv(){
   const list=S.arsiv||[];
   let r=`<div class="card"><h3>Sipariş arşivi</h3><p class="hint">Her 15 aylık sipariş yüklemesinde, bir önceki sipariş verisi otomatik arşivlenir. Burada geçmiş yüklemeleri görüntüleyebilir, silebilir ya da Sipariş Değişiklikleri'nde mevcut verilerle karşılaştırabilirsiniz.</p>`;
   if(!list.length)return r+'<p class="hint">Henüz arşivlenmiş sipariş yok. İkinci sipariş yüklemesinden sonra burada görünür.</p></div>';
   r+=`<table><tr><th>#</th><th class="l">Arşivlenme</th><th class="l">Dönem</th><th>Müşteri</th><th></th></tr>`;
   list.forEach((a,i)=>{r+=`<tr><td>${i+1}</td><td class="l">${esc(new Date(a.ts).toLocaleString('tr-TR'))}</td><td class="l">${esc(arcLabel(a))}</td><td>${Object.keys(a.data).length}</td>
-    <td><button onclick="ARV='${a.id}';render()">Görüntüle</button> <button onclick="DARC='${a.id}';T='degisim';render()">Karşılaştır</button> <button class="dn" onclick="delArc('${a.id}')">Sil</button></td></tr>`});
+    <td><button onclick="ARV='${a.id}';render()">Görüntüle</button> <button onclick="DB='${a.id}';T='degisim';render()">Karşılaştır</button> <button class="dn" onclick="delArc('${a.id}')">Sil</button></td></tr>`});
   r+='</table></div>';
   const a=list.find(x=>x.id===ARV);
   if(!a)return r;
@@ -395,31 +407,35 @@ function vArsiv(){
     r+=`<tr><td class="l">${esc(cname(cid))}</td><td class="l">${esc(it.name)}</td><td class="l">${esc(it.code)}</td>${vals.map(v=>`<td>${fq(v)}</td>`).join('')}<td><b>${fq(sum(vals))}</b></td></tr>`})});
   return r+'</table></div></div>'}
 function vDegisim(){
-  const withPrev=S.customers.filter(c=>baseFor(c.id));
-  let r=`<div class="card"><div class="row noprint"><label>Karşılaştırılan: <select onchange="DARC=this.value;render()"><option value="prev" ${DARC==='prev'?'selected':''}>Son yükleme öncesi</option>${(S.arsiv||[]).map(a=>`<option value="${a.id}" ${DARC===a.id?'selected':''}>${esc(new Date(a.ts).toLocaleDateString('tr-TR'))} — ${esc(arcLabel(a))}</option>`).join('')}</select></label><label>Müşteri: <select onchange="DC=this.value;render()"><option value="all">Tüm müşteriler</option>${S.customers.map(c=>`<option value="${c.id}" ${DC===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>
-  <button class="pr" onclick="exportDegisim()">Excel'e aktar</button></div><h3>Sipariş değişiklikleri (önceki yükleme ↔ son yükleme)</h3>`;
-  if(!withPrev.length)return r+'<p class="hint">Henüz karşılaştırma yok. Bir sipariş dosyası ikinci kez yüklendiğinde, önceki ile yeni sipariş arasındaki değişiklikler burada görünür.</p></div>';
-  const cs=DC==='all'?withPrev:withPrev.filter(c=>c.id===DC);
-  r+=`<p class="hint">Son yükleme: ${cs.map(c=>esc(c.name)+' — '+new Date(baseFor(c.id).ts).toLocaleString('tr-TR')).join(' | ')||'-'}</p>`;
-  const rows=diffAll(cs);
+  const vs=versionList();
+  if(vs.length<2)return '<div class="card"><p class="hint">Karşılaştırma için en az iki yükleme gerekir. İkinci sipariş yüklemesinden sonra burada görünür.</p></div>';
+  const {ia,ib}=pickPair(vs),A=vs[ia],B=vs[ib];
+  const opt=sel=>vs.map((v,i)=>`<option value="${v.id}" ${i===sel?'selected':''}>${esc(verLabel(v))}</option>`).join('');
+  const rows=diffPair(A,B);
+  let r=`<div class="card"><div class="row noprint"><label>1. yükleme: <select onchange="DA=this.value;render()">${opt(ia)}</select></label>
+  <label>2. yükleme: <select onchange="DB=this.value;render()">${opt(ib)}</select></label><button class="pr" onclick="exportDegisim()">Excel'e aktar</button></div>
+  <h3>Sipariş değişiklikleri — yalnızca seçilen iki yükleme arasındaki farklar</h3>
+  <p class="hint">${esc(verLabel(A))}  →  ${esc(verLabel(B))}</p>`;
+  if(ia===ib)return r+'<p class="hint">Aynı yükleme iki kez seçildi. Farklı iki yükleme seçin.</p></div>';
   r+=`<table><tr><th class="l">Müşteri</th><th class="l">Ay</th><th class="l">Malzeme Kodu</th><th class="l">Ürün</th><th>Önceki</th><th>Yeni</th><th>Fark</th><th>Fark %</th><th class="l">Durum</th></tr>`;
   rows.forEach(x=>{r+=`<tr><td class="l">${esc(x.cust)}</td><td class="l">${esc(x.ay)}</td><td class="l">${esc(x.code)}</td><td class="l">${esc(x.name)}</td><td>${fq(x.o)}</td><td>${fq(x.n)}</td><td class="${x.d>0?'pos':x.d<0?'neg':''}">${x.d>0?'+':''}${fq(x.d)}</td><td>${x.p===null?'-':'%'+x.p.toLocaleString('tr-TR',{maximumFractionDigits:1})}</td><td class="l">${x.t}</td></tr>`});
-  if(!rows.length)r+='<tr><td class="l" colspan="9">Değişiklik yok.</td></tr>';
+  if(!rows.length)r+='<tr><td class="l" colspan="9">Seçilen iki yükleme arasında fark yok.</td></tr>';
   return r+'</table></div>'}
 async function exportDegisim(){
   if(!window.ExcelJS)return alert('Excel kütüphanesi yüklenemedi.');
-  const cs=S.customers.filter(c=>baseFor(c.id)&&(DC==='all'||c.id===DC));const rows=diffAll(cs);
+  const vs=versionList();if(vs.length<2)return alert('Karşılaştırma için en az iki yükleme gerekir.');
+  const {ia,ib}=pickPair(vs),rows=diffPair(vs[ia],vs[ib]);
   const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Sipariş Değişiklikleri',{views:[{state:'frozen',ySplit:4}]});
   const thin={style:'thin',color:{argb:'FFBFC9D4'}},bd={top:thin,left:thin,bottom:thin,right:thin};
-  ws.getCell(1,1).value='Sipariş Değişiklikleri';ws.getCell(1,1).font={bold:true,size:14,color:{argb:'FF12355B'}};
-  const head=['Müşteri','Ay','Ürün','Malzeme Kodu','Önceki','Yeni','Fark','Fark %','Durum'];
+  ws.getCell(1,1).value='Sipariş Değişiklikleri: '+verLabel(vs[ia])+' → '+verLabel(vs[ib]);ws.getCell(1,1).font={bold:true,size:12,color:{argb:'FF12355B'}};
+  const head=['Müşteri','Ay','Malzeme Kodu','Ürün','Önceki','Yeni','Fark','Fark %','Durum'];
   const h=ws.getRow(4);h.height=26;head.forEach((v,i)=>{const c=h.getCell(i+1);c.value=v;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF12355B'}};c.alignment={horizontal:'center',vertical:'middle',wrapText:true};c.border=bd});
-  rows.forEach((x,ri)=>{const row=ws.getRow(5+ri);[x.cust,x.ay,x.name,x.code,x.o,x.n,x.d,x.p===null?'-':x.p/100,x.t].forEach((v,i)=>{const c=row.getCell(i+1);c.value=v;c.border=bd;c.fill={type:'pattern',pattern:'solid',fgColor:{argb:ri%2?'FFF4F7FA':'FFFFFFFF'}};
-    if(i>=4&&i<=6)c.numFmt='#,##0.##';if(i===7)c.numFmt='0.0%';c.alignment={vertical:'middle',wrapText:true,horizontal:i>=4&&i<=7?'right':'left'};
-    if(i===6&&typeof v==='number'&&v!==0)c.font={color:{argb:v>0?'FF1F7A4D':'FFB3261E'}}})});
-  [30,14,40,16,12,12,12,10,16].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  rows.forEach((x,ri)=>{const row=ws.getRow(5+ri);[x.cust,x.ay,x.code,x.name,x.o,x.n,x.d,x.p===null?'-':x.p/100,x.t].forEach((v,i)=>{const c=row.getCell(i+1);c.value=v;c.border=bd;
+    if(i>=4&&i<=6)c.numFmt='#,##0.##';if(i===7)c.numFmt='0.0%';c.alignment={vertical:'middle',wrapText:true,horizontal:i>=4&&i<=7?'right':'left'}})});
+  [30,14,16,40,12,12,12,10,16].forEach((w,i)=>ws.getColumn(i+1).width=w);
   const buf=await wb.xlsx.writeBuffer();
   dl(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'siparis_degisiklikleri_'+new Date().toISOString().slice(0,10)+'.xlsx')}
+
 function serInfo(c,k,i){
   const it=(S.orders[c]||[]).find(it=>(it.code||it.name)===k),q0=it?(valArr(it)[i]||0):0;
   const p=P(c).find(p=>(nc(p.code)||p.name)===k),batch=p?(+p.batch||0):0;
@@ -528,12 +544,13 @@ const mkey=(y,m,i)=>{const d=m+i;return (y+Math.floor(d/12))+'-'+(d%12)};
 function bArr(it){const a=z();if(it.v&&S.start)for(let i=0;i<N;i++)a[i]=it.v[mkey(S.start.y,S.start.m,i)]||0;return a}
 function migrateBudget(){if(!S.start)return;Object.keys(S.budget).forEach(c=>{S.budget[c]=S.budget[c].map(it=>{
   if(it.v)return it;const v={};(it.m||[]).forEach((x,i)=>{if(x)v[mkey(S.start.y,S.start.m,i)]=x});return{name:it.name,code:it.code,v}})})}
+function fiiliWin(c,k){const a=z(),mo=((S.series||{})[c]||{})[k]||{};if(S.start)for(let i=0;i<N;i++)(mo[mkey(S.start.y,S.start.m,i)]||[]).forEach(x=>a[i]+=+x.q||0);return a}
 function entries(cid){migrateBudget();migrateOrders();
   const cs=cid&&cid!=='all'?[cid]:S.customers.map(c=>c.id),out=[];
   cs.forEach(c=>{const map={};P(c).forEach(p=>{const k=nc(p.code)||p.name;map[k]={cid:c,k,name:p.name,code:p.code,o:z(),b:z()}});
     (S.orders[c]||[]).forEach(it=>{
       const k=it.code||it.name;map[k]=map[k]||{cid:c,k,name:it.name,code:it.code,o:z(),b:z()};map[k].o=valArr(it);});
-    Object.values(map).forEach(e=>{e.a=(S.actual[c]||{})[e.k]||z();out.push(e)});});
+    Object.values(map).forEach(e=>{e.a=fiiliWin(c,e.k);out.push(e)});});
   return out;}
 const col=(l,f)=>l.reduce((s,e)=>s.map((v,i)=>v+(e[f][i]||0)),z());
 
@@ -807,10 +824,10 @@ function upload(){
     migrateBudget();
     let newArc=null;
     if(!bud){const ad={};let any=false;
-      Object.keys(by).forEach(c=>{if((S.orders[c]||[]).length){ad[c]=JSON.parse(JSON.stringify(S.orders[c]));any=true}});
+      Object.keys(S.orders||{}).forEach(c=>{if((S.orders[c]||[]).length){ad[c]=JSON.parse(JSON.stringify(S.orders[c]));any=true}});
       if(any){S.arsiv=S.arsiv||[];newArc='a'+Date.now();S.arsiv.push({id:newArc,ts:new Date().toISOString(),data:ad,
         keys:[...new Set(Object.values(ad).flat().flatMap(it=>Object.keys(it.v||{})))]})}}
-    if(!bud){S.prev={};DARC=newArc||'prev';}
+    if(!bud){S.prev={};DA=newArc;DB='cur';}
     Object.keys(by).forEach(c=>{
       if(!bud){Object.keys(S.manualMark||{}).forEach(x=>{if(x.startsWith(c+'|'))delete S.manualMark[x]});S.prev=S.prev||{};S.prev[c]={ts:new Date().toISOString(),items:JSON.parse(JSON.stringify(S.orders[c]||[]))};
         S.orders[c]=by[c].filter(it=>Object.keys(it.v||{}).length);
