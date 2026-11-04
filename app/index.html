@@ -354,6 +354,10 @@ function gBody(rows,K){
   const legend=`<div class="legend"><span><i style="background:${GC2.light}"></i>Sipariş</span><span><i style="background:${GC2.dark}"></i>Fiili</span><span><i style="background:${GC2.gold}"></i>Bütçe</span></div>`;
   const card2=single?`<h3>${esc(labels[mi])} — ${GD.scope==='musteri'&&GD.tc==='all'||GD.scope==='urun'&&GD.tp!=='all'?'müşteri':'ürün'} dağılımı (${esc(filterName)})</h3>${legend}${groupedCols(entItems)}`
                     :`<h3>${esc(per)} — ${esc(filterName)} (aylık)</h3>${legend}${groupedCols(trend)}`;
+  const trRows=fr.map(r=>({code:r.code,name:r.name,cust:r.cust,so:sumIdx(r.o),fi:sumIdx(r.f)}))
+    .filter(x=>x.so>0||x.fi>0).sort((a,b)=>a.cust.localeCompare(b.cust,'tr')||String(a.code).localeCompare(String(b.code)));
+  const tblHTML=`<div style="overflow-x:auto"><table class="cmpt"><tr><th class="l">Malzeme Kodu</th><th class="l">Ürün Adı</th><th class="l">Müşteri Adı</th><th>Aylık Sipariş</th><th>Fiili</th><th>Yüzde Gerçekleşen</th></tr>`+
+    (trRows.map(x=>`<tr><td class="l">${esc(x.code)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.cust)}</td><td>${fq(x.so)}</td><td>${fq(x.fi)}</td><td>${x.so?'%'+(x.fi/x.so*100).toLocaleString('tr-TR',{maximumFractionDigits:1}):'-'}</td></tr>`).join('')||'<tr><td class="l" colspan="6">Bu dönemde veri yok</td></tr>')+'</table></div>';
   return `<div class="kpis">
     ${kpi('Sipariş — '+per,fq(O),B?O/B*100:0,GC2.light,'Bütçe oranı')}
     ${kpi('Fiili — '+per,fq(F),O?F/O*100:0,GC2.dark,'Sipariş oranı')}
@@ -365,6 +369,7 @@ function gBody(rows,K){
     <div class="card"><h3>Revize bütçe — ${esc(per)} (${esc(filterName)})</h3>${budgetBars(revItems,'#7a4fb5')}</div>
     <div class="card">${card2}</div>
     <div class="card" style="grid-column:1/-1"><h3>Ürün bazında sipariş / fiili — ${esc(per)}${GD.scope==='musteri'&&GD.tc!=='all'?' ('+esc(cname(GD.tc))+')':''}</h3><div class="legend"><span><i style="background:${GC2.light}"></i>Sipariş</span><span><i style="background:${GC2.dark}"></i>Fiili</span></div>${budgetBars(prodItems.map(p=>({label:p.label,b:p.o,f:p.f,tip:'sipariş'})),GC2.light,GC2.dark)}</div>
+    <div class="card" style="grid-column:1/-1"><h3>Malzeme kodu / ürün / müşteri — ${esc(per)}</h3>${tblHTML}</div>
   </div>`}
 function vGrafik(){
   if(!S.customers.length)return '<div class="card">Önce müşteri tanımlayın.</div>';
