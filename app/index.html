@@ -10,6 +10,12 @@ header{background:#12355b;color:#fff;padding:12px 18px;font-size:18px;font-weigh
 header .hbtn{background:#fff;color:#12355b;font-weight:600;border:0;border-radius:6px;padding:7px 14px;cursor:pointer}
 nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 18px;background:#fff;border-bottom:1px solid #d8dee4}
 nav button{white-space:nowrap;padding:7px 14px;border-radius:6px}
+nav#tabs{position:relative}
+.hamb{background:#12355b;color:#fff;border-color:#12355b;font-weight:600}
+.curtab{font-weight:600;color:#12355b;margin-left:6px}
+#menuPanel{display:none;position:absolute;top:100%;left:18px;z-index:50;background:#fff;border:1px solid #d8dee4;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px;min-width:250px;flex-direction:column;gap:4px}
+#menuPanel.open{display:flex}
+#menuPanel button{text-align:left;width:100%}
 nav b{margin-right:4px}
 nav.cust{background:#eef3f8}
 button,select,input[type=text]{font:inherit;padding:6px 12px;border:1px solid #b9c4cf;border-radius:6px;background:#fff;cursor:pointer}
@@ -130,7 +136,7 @@ function tlVal(raw){raw=String(raw==null?'':raw).trim();if(!raw)return '';
   if(raw.includes(',')){const k=raw.indexOf(',');const ip=raw.slice(0,k).replace(/\D/g,'')||'0',fp=raw.slice(k+1).replace(/\D/g,'').slice(0,2);
     return parseFloat(ip+'.'+(fp||'0'))}
   const d=raw.replace(/\D/g,'');if(!d)return '';return parseInt(d,10)/100}
-let SB=[],SM=-1,RM=-1,RC='all',UF='all',LC='',GA=-1;
+let SB=[],SM=-1,RM=-1,RMK=null,RC='all',UF='all',LC='',GA=-1;
 function valArr(it){if(it.v){const a=z();if(S.start)for(let i=0;i<N;i++)a[i]=it.v[mkey(S.start.y,S.start.m,i)]||0;return a}return it.m||z()}
 function migrateOrders(){if(!S.start)return;Object.keys(S.orders||{}).forEach(c=>{S.orders[c]=(S.orders[c]||[]).map(it=>{
   if(it.v)return it;const v={};(it.m||[]).forEach((x,i)=>{if(x)v[mkey(S.start.y,S.start.m,i)]=x});return{name:it.name,code:it.code,v}})})}
@@ -494,15 +500,54 @@ function monthRows(sc,mi){const out=[];
     const pn=[...new Set(inf.rows.map(x=>String(x.p||'').trim()).filter(Boolean))].join(', '),td=[...new Set(inf.rows.map(x=>x.d||'').filter(Boolean))].join(', ');
     out.push({cust:cname(c),name:e.name,code:e.code,q0:inf.q0,batch:inf.batch,count:inf.count,q:inf.has?inf.q:(e.a[mi]||0),t:inf.t,pn,td,notes})}));
   return out}
+function monthKeysAll(){const set=new Set();
+  if(S.start)for(let i=0;i<N;i++)set.add(mkey(S.start.y,S.start.m,i));
+  (S.arsiv||[]).forEach(a=>(a.keys||[]).forEach(k=>set.add(k)));
+  Object.values(S.series||{}).forEach(cs=>Object.values(cs).forEach(ms=>Object.keys(ms).forEach(k=>set.add(k))));
+  const ord=k=>{const [y,m]=k.split('-').map(Number);return y*12+m};
+  return [...set].sort((a,b)=>ord(a)-ord(b))}
+function windowKeys(){const set=new Set();if(S.start)for(let i=0;i<N;i++)set.add(mkey(S.start.y,S.start.m,i));return set}
+function orderQtyK(c,k,mk){
+  const it=(S.orders[c]||[]).find(x=>(x.code||x.name)===k);
+  if(it&&it.v&&(mk in it.v))return +it.v[mk]||0;
+  const arc=S.arsiv||[];
+  for(let i=arc.length-1;i>=0;i--){const x=((arc[i].data||{})[c]||[]).find(y=>(y.code||y.name)===k);if(x&&x.v&&(mk in x.v))return +x.v[mk]||0}
+  return 0}
+function serInfoK(c,k,mk,q0){
+  const p=P(c).find(p=>(nc(p.code)||p.name)===k),batch=p?(+p.batch||0):0;
+  const calc=batch>0&&q0>0?Math.ceil(q0/batch):0;
+  const all=(((S.series||{})[c]||{})[k]||{})[mk]||[];
+  const ov=(S.serN||{})[c+'|'+k+'|'+mk],count=(calc>0&&ov&&ov.calc===calc)?Math.max(0,ov.n):calc;
+  const rows=count>0?all.slice(0,count):all.slice();
+  let q=0,t=0;rows.forEach(x=>{q+=+x.q||0;t+=+x.t||0});
+  return {batch,count,rows,q,t,has:rows.some(x=>x.q!==''&&x.q!==undefined&&x.q!==null)}}
+function monthRowsK(sc,mk){const out=[];
+  (sc==='all'?S.customers.map(c=>c.id):[sc]).forEach(c=>{
+    const keys=new Set(P(c).map(p=>nc(p.code)||p.name));
+    (S.orders[c]||[]).forEach(x=>keys.add(x.code||x.name));
+    (S.arsiv||[]).forEach(a=>((a.data||{})[c]||[]).forEach(x=>keys.add(x.code||x.name)));
+    Object.keys((S.series||{})[c]||{}).forEach(k=>keys.add(k));
+    [...keys].sort((a,b)=>String(a).localeCompare(String(b))).forEach(k=>{
+      const q0=orderQtyK(c,k,mk),inf=serInfoK(c,k,mk,q0);
+      if(!(q0>0)&&!inf.has&&!inf.rows.some(r=>r.t||r.p||r.d||r.n))return;
+      const p=P(c).find(p=>(nc(p.code)||p.name)===k);
+      const src=(S.orders[c]||[]).find(x=>(x.code||x.name)===k)||((S.arsiv||[]).map(a=>((a.data||{})[c]||[]).find(x=>(x.code||x.name)===k)).filter(Boolean).pop());
+      const name=(p&&p.name)||(src&&src.name)||k,code=(p&&p.code)||(src&&src.code)||k;
+      const seriNotes=inf.rows.map((x,i)=>x.n&&String(x.n).trim()?(i+1)+'. seri: '+String(x.n).trim():'').filter(Boolean).join('; ');
+      const notes=[(S.pnotes||{})[c+'|'+k]||'',(S.mnotes||{})[c+'|'+k+'|'+mk]||'',seriNotes].filter(Boolean).join(' | ');
+      const pn=[...new Set(inf.rows.map(x=>String(x.p||'').trim()).filter(Boolean))].join(', '),td=[...new Set(inf.rows.map(x=>x.d||'').filter(Boolean))].join(', ');
+      out.push({cust:cname(c),name,code,q0,batch:inf.batch,count:inf.count||inf.rows.length,q:inf.has?inf.q:0,t:inf.t,pn,td,notes})})});
+  return out}
 function vAylik(){
   if(!S.customers.length||!S.start)return '<div class="card">Önce müşteri tanımlayıp sipariş yükleyin.</div>';
-  if(RM<0||RM>=N)RM=0;
+  const ML=monthKeysAll(),WK=windowKeys();
+  if(!RMK||!ML.includes(RMK))RMK=mkey(S.start.y,S.start.m,0);
   if(RC!=='all'&&!S.customers.some(c=>c.id===RC))RC='all';
-  const rows=monthRows(RC,RM),T0=rows.reduce((a,x)=>({q0:a.q0+x.q0,c:a.c+x.count,q:a.q+x.q,t:a.t+x.t}),{q0:0,c:0,q:0,t:0});
-  let r=`<div class="card"><div class="row noprint"><label>Ay: <select onchange="RM=+this.value;render()">${M().map((m,i)=>`<option value="${i}" ${RM===i?'selected':''}>${esc(m)}</option>`).join('')}</select></label>
+  const rows=monthRowsK(RC,RMK),T0=rows.reduce((a,x)=>({q0:a.q0+x.q0,c:a.c+x.count,q:a.q+x.q,t:a.t+x.t}),{q0:0,c:0,q:0,t:0});
+  let r=`<div class="card"><div class="row noprint"><label>Ay: <select onchange="RMK=this.value;render()">${ML.map(k=>`<option value="${k}" ${RMK===k?'selected':''}>${esc(mkLabel(k))}${WK.has(k)?'':' (geçmiş)'}</option>`).join('')}</select></label>
   <label>Müşteri: <select onchange="RC=this.value;render()"><option value="all">Tüm müşteriler</option>${S.customers.map(c=>`<option value="${c.id}" ${RC===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>
   <button class="pr" onclick="print()">Yazdır / PDF</button><button class="pr" onclick="exportAy()">Excel'e aktar</button></div>
-  <h3>${esc(M()[RM])} — Aylık Sipariş ve Fiili Raporu${RC==='all'?'':' — '+esc(cname(RC))}</h3>
+  <h3>${esc(mkLabel(RMK))} — Aylık Sipariş ve Fiili Raporu${RC==='all'?'':' — '+esc(cname(RC))}</h3>
   <table><tr><th class="l">Malzeme Kodu</th><th class="l">Ürün</th><th class="l">Müşteri</th><th>Aylık Sipariş (kutu)</th><th>Parti Büyüklüğü (kutu)</th><th>Seri Sayısı</th><th>Toplam Fiili Miktar</th><th>Toplam Tutar TL</th><th class="l">Parti No</th><th class="l">Teslimat Tarihi</th><th class="l">Açıklama</th></tr>`;
   rows.forEach(x=>{r+=`<tr><td class="l">${esc(x.code)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.cust)}</td><td>${fq(x.q0)}</td><td>${x.batch?fq(x.batch):'-'}</td><td>${x.count||'-'}</td><td>${fq(x.q)}</td><td>${fmt2(x.t)}</td><td class="l">${esc(x.pn)}</td><td class="l">${x.td?x.td.split(', ').map(fdate).join(', '):''}</td><td class="l" style="white-space:normal;min-width:180px">${esc(x.notes)}</td></tr>`});
   if(!rows.length)r+='<tr><td class="l" colspan="11">Bu ay için sipariş bulunamadı.</td></tr>';
@@ -510,9 +555,9 @@ function vAylik(){
   return r+'</table></div>'}
 async function exportAy(){
   if(!window.ExcelJS)return alert('Excel kütüphanesi yüklenemedi.');
-  const rows=monthRows(RC,RM),wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Aylık Rapor',{properties:{tabColor:{argb:'FF12355B'}},views:[{state:'frozen',ySplit:4}]});
+  const rows=monthRowsK(RC,RMK),wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Aylık Rapor',{properties:{tabColor:{argb:'FF12355B'}},views:[{state:'frozen',ySplit:4}]});
   const thin={style:'thin',color:{argb:'FFBFC9D4'}},bd={top:thin,left:thin,bottom:thin,right:thin},fill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
-  const c1=ws.getCell(1,1);c1.value=M()[RM]+' — Aylık Sipariş ve Fiili Raporu';c1.font={bold:true,size:14,color:{argb:'FF12355B'}};
+  const c1=ws.getCell(1,1);c1.value=mkLabel(RMK)+' — Aylık Sipariş ve Fiili Raporu';c1.font={bold:true,size:14,color:{argb:'FF12355B'}};
   const c2=ws.getCell(2,1);c2.value='Rapor tarihi: '+new Date().toLocaleDateString('tr-TR')+(RC==='all'?'':'   |   Müşteri: '+cname(RC));c2.font={italic:true,color:{argb:'FF5B6B7A'}};
   const head=['Malzeme Kodu','Ürün','Müşteri','Aylık Sipariş (kutu)','Parti Büyüklüğü (kutu)','Seri Sayısı','Toplam Fiili Miktar','Toplam Tutar TL','Parti No','Teslimat Tarihi','Açıklama'];
   const h=ws.getRow(4);h.height=32;head.forEach((v,i)=>{const c=h.getCell(i+1);c.value=v;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill=fill('FF12355B');c.alignment={horizontal:'center',vertical:'middle',wrapText:true};c.border=bd});
@@ -524,7 +569,7 @@ async function exportAy(){
       if(i>=3&&i<=7){c.alignment={horizontal:'right',vertical:'middle'};c.numFmt=i===7?'#,##0.00':'#,##0.##'}else c.alignment={vertical:'middle',wrapText:true}})});
   [15,38,30,16,16,11,16,16,18,16,50].forEach((w,i)=>ws.getColumn(i+1).width=w);
   const buf=await wb.xlsx.writeBuffer();
-  dl(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'aylik_rapor_'+M()[RM].replace(/\s/g,'_')+'.xlsx')}
+  dl(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'aylik_rapor_'+mkLabel(RMK).replace(/\s/g,'_')+'.xlsx')}
 function vUrun(){
   let r=`<div class="card"><h3>Ürün / Parti tanımı</h3>
   <div class="row"><input type="text" id="pc1" list="cl" placeholder="Müşteri adı" value="${esc(LC)}" style="width:200px"><datalist id="cl">${S.customers.map(c=>`<option value="${esc(c.name)}">`).join('')}</datalist>
@@ -569,9 +614,15 @@ function summary(l){
   <tr><td class="l">Fiili</td>${cells(a)}</tr>
   <tr class="t"><td class="l">Fark % (Fiili / Bütçe)</td>${a.map((v,i)=>pc(v,b[i])).join('')}${pc(sum(a),sum(b))}</tr></table>`;}
 
+let MENU=false;
+function toggleMenu(e){if(e)e.stopPropagation();MENU=!MENU;const pn=document.getElementById('menuPanel');if(pn)pn.classList.toggle('open',MENU)}
+function closeMenu(){MENU=false;const pn=document.getElementById('menuPanel');if(pn)pn.classList.remove('open')}
+document.addEventListener('click',e=>{if(MENU&&!(e.target.closest&&e.target.closest('#tabs')))closeMenu()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MENU)closeMenu()});
 function tabs(){
   const t=[['genel','Tüm Müşteriler'],['musteri','Müşteri Detay'],['karsi','Bütçe Karşılaştırma'],['aylik','Aylık Rapor'],['degisim','Sipariş Değişiklikleri'],['arsiv','Arşiv'],['yukle','Excel Yükle'],['manuel','Manuel Giriş'],['grafik','Grafik'],['tanim','Müşteri Tanımla'],['urun','Ürün / Parti Tanımı'],['sil','Veri Sil'],['rapor','Yedek / Rapor']];
-  $('#tabs').innerHTML=t.map(([k,l])=>`<button class="${T===k?'on':''}" onclick="T='${k}';render()">${l}</button>`).join('');
+  const curLabel=(t.find(x=>x[0]===T)||['',''])[1];
+  $('#tabs').innerHTML=`<button class="hamb" onclick="toggleMenu(event)" aria-label="Menü">☰ Menü</button><span class="curtab">${curLabel}</span><div id="menuPanel" class="${MENU?'open':''}">${t.map(([k,l])=>`<button class="${T===k?'on':''}" onclick="T='${k}';MENU=false;render()">${l}</button>`).join('')}</div>`;
   $('#custs').innerHTML=S.customers.length?'<b style="align-self:center">Müşteriler:</b>'+S.customers.map(c=>`<button class="${cur===c.id&&T!=='genel'?'on':''}" onclick="cur='${c.id}';SM=0;if(T==='genel'||T==='tanim'||T==='rapor'||T==='yukle')T='musteri';render()">${esc(c.name)}</button>`).join(''):'<span class="hint">Önce "Müşteri Tanımla" sekmesinden müşteri ekleyin.</span>';}
 
 function vGenelDetay(){
