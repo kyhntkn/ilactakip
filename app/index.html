@@ -16,8 +16,11 @@ nav#tabs{position:relative}
 #menuPanel{display:none;position:absolute;top:100%;left:18px;z-index:50;background:#fff;border:1px solid #d8dee4;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:8px;min-width:250px;flex-direction:column;gap:4px}
 #menuPanel.open{display:flex}
 #menuPanel button{text-align:left;width:100%}
+
+
+#custSub{display:none;flex-direction:column;gap:4px;margin:2px 0 6px 14px;max-height:260px;overflow:auto;border-left:3px solid #d8dee4;padding-left:8px}
+#custSub.open{display:flex}
 nav b{margin-right:4px}
-nav.cust{background:#eef3f8}
 button,select,input[type=text]{font:inherit;padding:6px 12px;border:1px solid #b9c4cf;border-radius:6px;background:#fff;cursor:pointer}
 button.on{background:#12355b;color:#fff;border-color:#12355b}button.pr{background:#1f7a4d;color:#fff;border-color:#1f7a4d}button.dn{color:#b3261e}
 main{padding:16px 18px}.card{background:#fff;border:1px solid #d8dee4;border-radius:8px;padding:14px;margin-bottom:16px;overflow-x:auto}
@@ -50,7 +53,7 @@ td.l{white-space:normal}h2{font-size:13px;margin:0 0 6px}h3{font-size:10px;margi
 
 </style></head><body>
 <header><span class="ttl">İlaç Sipariş Takip <span class="x" style="font-weight:400;font-size:13px;opacity:.85">— sipariş / bütçe / fiili karşılaştırma</span></span><span id="sv" class="sv noprint"></span><button class="hbtn" onclick="refresh()">⟳ Kaydet ve Yenile</button></header>
-<nav id="tabs"></nav><nav class="cust" id="custs"></nav><main id="app"></main>
+<nav id="tabs"></nav><main id="app"></main>
 <script>
 if(window.desktop){const _a=window.alert.bind(window),_c=window.confirm.bind(window);
   window.alert=m=>{_a(m);desktop.refocus()};window.confirm=m=>{const r=_c(m);desktop.refocus();return r}}
@@ -488,7 +491,7 @@ function vSeri(l){
   items.forEach(e=>{const bi=SB.length;SB.push({c:e.cid,k:e.k,i:SM});const inf=serInfo(e.cid,e.k,SM);
     r+=`<div style="margin:12px 0 18px"><div><b>${esc(e.name)}</b> <span class="hint">(${esc(e.code)})</span> — Sipariş: <b>${fq(inf.q0)}</b> kutu`+
     (inf.batch?` · Parti: <b>${fq(inf.batch)}</b> kutu · İstenen seri: <b>${inf.calc}</b>`+(inf.count!==inf.calc?` · Gösterilen: <b>${inf.count}</b>`:'')+(inf.q0%inf.batch?` <span class="hint">(${(inf.q0/inf.batch).toLocaleString('tr-TR',{maximumFractionDigits:2})} seri, yukarı yuvarlandı)</span>`:''):' · <span class="neg">Parti büyüklüğü tanımlı değil ("Ürün / Parti Tanımı" sekmesi)</span>')+(inf.batch?` <span class="noprint"><button onclick="addSerRow(${bi})" style="padding:2px 8px;margin-left:8px">+ Satır ekle</button>${inf.count!==inf.calc?` <button onclick="resetSer(${bi})" style="padding:2px 8px">↺ Satırları yeniden oluştur</button>`:''}</span>`:'')+'</div>';
-    if(inf.count){r+=`<table style="width:auto;margin-top:6px"><tr><th class="l">Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Teslimat Tarihi</th><th class="l">Açıklama</th><th class="noprint"></th></tr>`;
+    if(inf.count){r+=`<table style="width:auto;margin-top:6px"><tr><th class="l">Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Fatura Tarihi</th><th class="l">Açıklama</th><th class="noprint"></th></tr>`;
       for(let j=0;j<inf.count;j++){const x=inf.rows[j]||{},qv=x.q===''||x.q===undefined?'':x.q,tv=x.t===''||x.t===undefined?'':x.t;
         r+=`<tr><td class="l">${j+1}. seri</td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:120px;text-align:right" value="${qv===''||qv==null?'':fq(+qv)}" onchange="setSer(${bi},${j},'q',qVal(this.value));this.value=qVal(this.value)===''?'':fq(qVal(this.value))"></td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:150px;text-align:right" value="${tv===''||tv==null?'':fmt2(+tv)}" onchange="setSer(${bi},${j},'t',tlVal(this.value));this.value=this.value?fmt2(tlVal(this.value)):''"></td><td class="l"><input type="text" style="width:130px" value="${esc(x.p||'')}" onchange="setSer(${bi},${j},'p',this.value)"></td><td class="l"><input type="date" value="${esc(x.d||'')}" onchange="setSer(${bi},${j},'d',this.value)"></td><td class="l"><input type="text" style="width:260px" value="${esc(x.n||'')}" onchange="setSer(${bi},${j},'n',this.value)"></td><td class="noprint"><button title="Bu satırı sil" onclick="delSer(${bi},${j})" style="padding:2px 7px;color:#b3261e">🗑</button></td></tr>`}
       r+=`<tr class="t"><td class="l">Toplam</td><td id="tq${bi}">${fq(inf.q)}</td><td id="tt${bi}">${fmt2(inf.t)}</td><td></td><td></td><td></td><td class="noprint"></td></tr></table>`}
@@ -548,7 +551,7 @@ function vAylik(){
   <label>Müşteri: <select onchange="RC=this.value;render()"><option value="all">Tüm müşteriler</option>${S.customers.map(c=>`<option value="${c.id}" ${RC===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>
   <button class="pr" onclick="print()">Yazdır / PDF</button><button class="pr" onclick="exportAy()">Excel'e aktar</button></div>
   <h3>${esc(mkLabel(RMK))} — Aylık Sipariş ve Fiili Raporu${RC==='all'?'':' — '+esc(cname(RC))}</h3>
-  <table><tr><th class="l">Malzeme Kodu</th><th class="l">Ürün</th><th class="l">Müşteri</th><th>Aylık Sipariş (kutu)</th><th>Parti Büyüklüğü (kutu)</th><th>Seri Sayısı</th><th>Toplam Fiili Miktar</th><th>Toplam Tutar TL</th><th class="l">Parti No</th><th class="l">Teslimat Tarihi</th><th class="l">Açıklama</th></tr>`;
+  <table><tr><th class="l">Malzeme Kodu</th><th class="l">Ürün</th><th class="l">Müşteri</th><th>Aylık Sipariş (kutu)</th><th>Parti Büyüklüğü (kutu)</th><th>Seri Sayısı</th><th>Toplam Fiili Miktar</th><th>Toplam Tutar TL</th><th class="l">Parti No</th><th class="l">Fatura Tarihi</th><th class="l">Açıklama</th></tr>`;
   rows.forEach(x=>{r+=`<tr><td class="l">${esc(x.code)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.cust)}</td><td>${fq(x.q0)}</td><td>${x.batch?fq(x.batch):'-'}</td><td>${x.count||'-'}</td><td>${fq(x.q)}</td><td>${fmt2(x.t)}</td><td class="l">${esc(x.pn)}</td><td class="l">${x.td?x.td.split(', ').map(fdate).join(', '):''}</td><td class="l" style="white-space:normal;min-width:180px">${esc(x.notes)}</td></tr>`});
   if(!rows.length)r+='<tr><td class="l" colspan="11">Bu ay için sipariş bulunamadı.</td></tr>';
   else r+=`<tr class="t"><td class="l" colspan="3">TOPLAM</td><td>${fq(T0.q0)}</td><td></td><td>${T0.c}</td><td>${fq(T0.q)}</td><td>${fmt2(T0.t)}</td><td></td><td></td><td></td></tr>`;
@@ -559,7 +562,7 @@ async function exportAy(){
   const thin={style:'thin',color:{argb:'FFBFC9D4'}},bd={top:thin,left:thin,bottom:thin,right:thin},fill=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
   const c1=ws.getCell(1,1);c1.value=mkLabel(RMK)+' — Aylık Sipariş ve Fiili Raporu';c1.font={bold:true,size:14,color:{argb:'FF12355B'}};
   const c2=ws.getCell(2,1);c2.value='Rapor tarihi: '+new Date().toLocaleDateString('tr-TR')+(RC==='all'?'':'   |   Müşteri: '+cname(RC));c2.font={italic:true,color:{argb:'FF5B6B7A'}};
-  const head=['Malzeme Kodu','Ürün','Müşteri','Aylık Sipariş (kutu)','Parti Büyüklüğü (kutu)','Seri Sayısı','Toplam Fiili Miktar','Toplam Tutar TL','Parti No','Teslimat Tarihi','Açıklama'];
+  const head=['Malzeme Kodu','Ürün','Müşteri','Aylık Sipariş (kutu)','Parti Büyüklüğü (kutu)','Seri Sayısı','Toplam Fiili Miktar','Toplam Tutar TL','Parti No','Fatura Tarihi','Açıklama'];
   const h=ws.getRow(4);h.height=32;head.forEach((v,i)=>{const c=h.getCell(i+1);c.value=v;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill=fill('FF12355B');c.alignment={horizontal:'center',vertical:'middle',wrapText:true};c.border=bd});
   const fdx=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d||'');return m?m[3]+'.'+m[2]+'.'+m[1]:''};
   const data=rows.map(x=>[x.code,x.name,x.cust,x.q0,x.batch||'',x.count||'',x.q,x.t,x.pn,(x.td||'').split(', ').map(fdx).filter(Boolean).join(', '),x.notes]);
@@ -614,21 +617,25 @@ function summary(l){
   <tr><td class="l">Fiili</td>${cells(a)}</tr>
   <tr class="t"><td class="l">Fark % (Fiili / Bütçe)</td>${a.map((v,i)=>pc(v,b[i])).join('')}${pc(sum(a),sum(b))}</tr></table>`;}
 
-let MENU=false;
+let MENU=false,MSUB=false;
+function pickCust(id){cur=id;SM=0;T='musteri';MENU=false;render()}
+function openCustMenu(e){if(e)e.stopPropagation();if(T==='musteri')MSUB=!MSUB;else{T='musteri';MSUB=true}render()}
+function menuCustGroup(label){
+  const list=S.customers.length?S.customers.map(c=>`<button class="${cur===c.id&&T==='musteri'?'on':''}" onclick="pickCust('${c.id}')">${esc(c.name)}</button>`).join(''):'<span class="hint">Önce "Müşteri Tanımla" ile müşteri ekleyin.</span>';
+  return `<button class="${T==='musteri'?'on':''}" onclick="openCustMenu(event)">${label} ${MSUB?'▴':'▾'}</button><div id="custSub" class="${MSUB?'open':''}">${list}</div>`}
 function toggleMenu(e){if(e)e.stopPropagation();MENU=!MENU;const pn=document.getElementById('menuPanel');if(pn)pn.classList.toggle('open',MENU)}
 function closeMenu(){MENU=false;const pn=document.getElementById('menuPanel');if(pn)pn.classList.remove('open')}
 document.addEventListener('click',e=>{if(MENU&&!(e.target.closest&&e.target.closest('#tabs')))closeMenu()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MENU)closeMenu()});
 function tabs(){
   const t=[['genel','Tüm Müşteriler'],['musteri','Müşteri Detay'],['karsi','Bütçe Karşılaştırma'],['aylik','Aylık Rapor'],['degisim','Sipariş Değişiklikleri'],['arsiv','Arşiv'],['yukle','Excel Yükle'],['manuel','Manuel Giriş'],['grafik','Grafik'],['tanim','Müşteri Tanımla'],['urun','Ürün / Parti Tanımı'],['sil','Veri Sil'],['rapor','Yedek / Rapor']];
-  const curLabel=(t.find(x=>x[0]===T)||['',''])[1];
-  $('#tabs').innerHTML=`<button class="hamb" onclick="toggleMenu(event)" aria-label="Menü">☰ Menü</button><span class="curtab">${curLabel}</span><div id="menuPanel" class="${MENU?'open':''}">${t.map(([k,l])=>`<button class="${T===k?'on':''}" onclick="T='${k}';MENU=false;render()">${l}</button>`).join('')}</div>`;
-  $('#custs').innerHTML=S.customers.length?'<b style="align-self:center">Müşteriler:</b>'+S.customers.map(c=>`<button class="${cur===c.id&&T!=='genel'?'on':''}" onclick="cur='${c.id}';SM=0;if(T==='genel'||T==='tanim'||T==='rapor'||T==='yukle')T='musteri';render()">${esc(c.name)}</button>`).join(''):'<span class="hint">Önce "Müşteri Tanımla" sekmesinden müşteri ekleyin.</span>';}
+  const curLabel=((t.find(x=>x[0]===T)||['',''])[1])+(T==='musteri'&&cur&&S.customers.some(c=>c.id===cur)?' — '+esc(cname(cur)):'');
+  $('#tabs').innerHTML=`<button class="hamb" onclick="toggleMenu(event)" aria-label="Menü">☰ Menü</button><span class="curtab">${curLabel}</span><div id="menuPanel" class="${MENU?'open':''}">${t.map(([k,l])=>k==='musteri'?menuCustGroup(l):`<button class="${T===k?'on':''}" onclick="T='${k}';MENU=false;render()">${l}</button>`).join('')}</div>`;}
 
 function vGenelDetay(){
   const mk=selMK(),rows=[];S.customers.forEach(c=>serDetail(c.id).forEach(x=>{if(x.mk===mk)rows.push({...x,cust:c.name})}));
   if(!rows.length)return `<div class="card"><h3>${esc(selLabel())} — aylık parti / fiili giriş detayı (salt okunur)</h3><p class="hint">Bu ay için giriş yok.</p></div>`;
-  let r=`<div class="card"><h3>${esc(selLabel())} — aylık parti / fiili giriş detayı (salt okunur)</h3><table><tr><th class="l">Ay</th><th class="l">Malzeme Kodu</th><th class="l">Ürün</th><th class="l">Müşteri</th><th>Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Teslimat Tarihi</th><th class="l">Açıklama</th></tr>`;
+  let r=`<div class="card"><h3>${esc(selLabel())} — aylık parti / fiili giriş detayı (salt okunur)</h3><table><tr><th class="l">Ay</th><th class="l">Malzeme Kodu</th><th class="l">Ürün</th><th class="l">Müşteri</th><th>Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Fatura Tarihi</th><th class="l">Açıklama</th></tr>`;
   let tq=0,tt=0;
   rows.forEach(x=>{tq+=x.q;tt+=x.t;r+=`<tr><td class="l">${esc(x.ay)}</td><td class="l">${esc(x.code)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.cust)}</td><td>${x.seri}</td><td>${fq(x.q)}</td><td>${fmt2(x.t)}</td><td class="l">${esc(x.p)}</td><td class="l">${fdate(x.d)}</td><td class="l" style="white-space:normal">${esc(x.n)}</td></tr>`});
   r+=`<tr class="t"><td class="l" colspan="5">TOPLAM</td><td>${fq(tq)}</td><td>${fmt2(tt)}</td><td colspan="3"></td></tr>`;
@@ -650,7 +657,7 @@ function vGenel(){
   return r+'</table></div>'+vGenelDetay();}
 
 function vMusteri(ns){
-  if(!cur)return '<div class="card">Üstten bir müşteri seçin.</div>';
+  if(!cur)return '<div class="card">Menü → Müşteri Detay altından bir müşteri seçin.</div>';
   const l=entries(cur);
   let r=`<div class="card"><h3>${esc(cname(cur))} — sipariş (ilaç bazında)</h3><table>${head('<th class="l">İlaç</th><th class="l">Malzeme Kodu</th>')}`;
   l.forEach(e=>{r+=`<tr><td class="l">${esc(e.name)}</td><td class="l">${esc(e.code)}</td>${cells(e.o)}</tr>`});
@@ -995,7 +1002,7 @@ function serDetail(c){const out=[],sr=(S.series||{})[c]||{};
         out.push({mk:mk,ord:y*12+mo,ay:TR[mo]+' '+y,name,code,seri:j+1,q:+x.q||0,t:+x.t||0,p:x.p||'',d:x.d||'',n:x.n||''})})})});
   return out.sort((a,b)=>a.ord-b.ord||a.code.localeCompare(b.code)||a.seri-b.seri)}
 function vDetay(c){const mk=selMK(),l=serDetail(c).filter(x=>x.mk===mk);if(!l.length)return `<div class="card"><h3>${esc(cname(c))} — ${esc(selLabel())} parti / fiili giriş detayı</h3><p class="hint">Bu ay için giriş yok.</p></div>`;
-  let r=`<div class="card"><h3>${esc(cname(c))} — ${esc(selLabel())} parti / fiili giriş detayı</h3><table><tr><th class="l">Ay</th><th class="l">Ürün</th><th class="l">Malzeme Kodu</th><th>Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Teslimat Tarihi</th><th class="l">Açıklama</th></tr>`;
+  let r=`<div class="card"><h3>${esc(cname(c))} — ${esc(selLabel())} parti / fiili giriş detayı</h3><table><tr><th class="l">Ay</th><th class="l">Ürün</th><th class="l">Malzeme Kodu</th><th>Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Fatura Tarihi</th><th class="l">Açıklama</th></tr>`;
   let tq=0,tt=0;l.forEach(x=>{tq+=x.q;tt+=x.t;r+=`<tr><td class="l">${esc(x.ay)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.code)}</td><td>${x.seri}</td><td>${fq(x.q)}</td><td>${fmt2(x.t)}</td><td class="l">${esc(x.p)}</td><td class="l">${fdate(x.d)}</td><td class="l" style="white-space:normal">${esc(x.n)}</td></tr>`});
   r+=`<tr class="t"><td class="l" colspan="4">TOPLAM</td><td>${fq(tq)}</td><td>${fmt2(tt)}</td><td colspan="3"></td></tr>`;
   return r+'</table></div>'}
@@ -1070,7 +1077,7 @@ async function exportX(){
   {const fdx=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d||'');return m?m[3]+'.'+m[2]+'.'+m[1]:''};
   const dws=wb.addWorksheet('Parti-Fiili Detay',{properties:{tabColor:{argb:'FFB3261E'}},views:[{state:'frozen',ySplit:4}]});
   const dt=dws.getCell(1,1);dt.value='Aylık Parti / Fiili Giriş Detayı';dt.font={bold:true,size:14,color:{argb:'FF12355B'}};
-  const dh=['Müşteri','Ay','Ürün','Malzeme Kodu','Seri','Fiili Miktar','Tutar TL','Parti No','Teslimat Tarihi','Açıklama'];
+  const dh=['Müşteri','Ay','Ürün','Malzeme Kodu','Seri','Fiili Miktar','Tutar TL','Parti No','Fatura Tarihi','Açıklama'];
   const hr=dws.getRow(4);hr.height=28;dh.forEach((v,i)=>{const c=hr.getCell(i+1);c.value=v;c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF12355B'}};c.alignment={horizontal:'center',vertical:'middle',wrapText:true};c.border=bd});
   let rr=5,tq=0,tt=0;
   S.customers.forEach(c=>serDetail(c.id).forEach(x=>{
