@@ -51,9 +51,18 @@ td.l{white-space:normal}h2{font-size:13px;margin:0 0 6px}h3{font-size:10px;margi
 .kpiTop{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .kpi{padding:10px 12px}
 
+#modeBar{display:none;padding:8px 18px;font-size:13px;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid #d8dee4}
+#modeBar.on{display:flex}#modeBar button{padding:4px 12px;font-size:13px}
+#modeBar.view{background:#fff4d6;border-color:#e8cf8a;color:#4a3800}
+#modeBar.edit{background:#e3f4ea;border-color:#a9d8bb;color:#14532d}
+#modeBar .bad{background:#b3261e;color:#fff;border-radius:4px;padding:2px 6px}#modeBar .note{background:#fff;border-radius:4px;padding:2px 8px;border:1px solid #d8dee4}
+body.ro{-webkit-user-select:none;user-select:none}
+body.ro #app input,body.ro #app textarea{background:#f3f4f6;color:#1c2630;border-color:#e1e6eb}
+#roToast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1c2630;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:10000;box-shadow:0 6px 20px rgba(0,0,0,.25);display:none}
+@media print{body.ro *{display:none!important}}
 </style></head><body>
-<header><span class="ttl">İlaç Sipariş Takip <span class="x" style="font-weight:400;font-size:13px;opacity:.85">— sipariş / bütçe / fiili karşılaştırma</span></span><span id="sv" class="sv noprint"></span><button class="hbtn" onclick="refresh()">⟳ Kaydet ve Yenile</button></header>
-<nav id="tabs"></nav><main id="app"></main>
+<header><span class="ttl">İlaç Sipariş Takip <span class="x" style="font-weight:400;font-size:13px;opacity:.85">— sipariş / bütçe / fiili karşılaştırma</span></span><span id="sv" class="sv noprint"></span><button class="hbtn" id="rfBtn" onclick="refresh()">⟳ Kaydet ve Yenile</button></header>
+<div id="modeBar" class="noprint"></div><nav id="tabs"></nav><main id="app"></main><div id="roToast"></div>
 <script>
 if(window.desktop){const _a=window.alert.bind(window),_c=window.confirm.bind(window);
   window.alert=m=>{_a(m);desktop.refocus()};window.confirm=m=>{const r=_c(m);desktop.refocus();return r}}
@@ -71,22 +80,49 @@ const DESK=!!window.desktop;
 try{const x=DESK?window.desktop.initial:localStorage.getItem('ilacdb');if(x)S=JSON.parse(x)}catch(e){}
 fixS();
 let FH=null,FS='Bağlı değil',NEEDP=false,tm;
+// Salt okunur mod: ortak alanda başka biri düzenlerken bu bilgisayar yalnızca görüntüler.
+// Değiştirme, Excel/PDF/yazdırma, yedek indirme ve kopyalama kapalıdır.
+let RO=DESK&&!!(window.desktop.status0&&window.desktop.status0.mode==='view'),LASTJ=DESK?window.desktop.initial:null,ST=DESK?window.desktop.status0:null;
+const RO_TABS=['yukle','manuel','tanim','urun','sil'];
+const RO_FN=['upload','upload12','wipe','resetSer','renC','editMNoteEl','delSer','delProd','delItem','delC','delArc','restore','addSerRow','addProd','addOrdRow','addC','setSer','setPNoteEl','setOrdEl','setBatch','setA','printRep','printGrafik','exportX','exportDegisim','exportAy','backup'];
+const RO_RE=new RegExp('\\b('+RO_FN.join('|')+'|print|flushNow)\\(');
+let roT;function roMsg(m){const e=document.getElementById('roToast');if(!e)return;e.textContent=m||'Salt okunur moddasınız — bu işlem yapılamaz. Düzenlemek için üstteki şeritten düzenleme hakkını isteyin.';e.style.display='block';clearTimeout(roT);roT=setTimeout(()=>e.style.display='none',3500)}
+function roRevert(){if(LASTJ){try{S=JSON.parse(LASTJ);fixS();migrateOrders()}catch(e){}}roMsg();render()}
 const FSOK=!!(window.showSaveFilePicker&&window.showOpenFilePicker);
 let dirty=false;
 const fdt=iso=>{const d=new Date(iso);return isNaN(d)?'—':d.toLocaleString('tr-TR')};
 function paintSv(st){const e=document.querySelector('#sv');let h='';
   if(st&&st.err)h+=`<span class="bad">⚠ ${esc(st.err)}</span>`;
-  h+=`💾 Son kayıt: <b>${st&&st.lastSavedAt?fdt(st.lastSavedAt):'—'}</b>`;
   const sh=st&&st.shared;
-  if(sh&&sh.enabled){const b=f=>`<button class="hbtn" onclick="desktop.syncShared()">${f}</button>`;
-    h+=' · '+({ok:`🌐 Ortak alan: <b>güncel</b>${sh.at?' ('+fdt(sh.at)+')':''}`,
-      offline:'⚠ Ortak alana ulaşılamıyor — yerelde kayıtlı, bağlantı gelince gönderilecek',
-      conflict:'⚠ Ortak alanda çakışma '+b('Çöz'),
-      newer:'🔄 Ortak alanda yeni sürüm var '+b('Güncelle')}[sh.state]||'🌐 Ortak alan')}
+  h+=`💾 Son kayıt: <b>${st&&st.lastSavedAt?fdt(st.lastSavedAt):'—'}</b>`;
+  if(sh&&sh.enabled&&st.savedBy)h+=` — ${esc(st.savedBy)}${st.rev?' · sürüm '+st.rev:''}`;
+  if(sh&&sh.enabled)h+=' · '+(sh.state==='offline'?(st.pending?'⚠ Ortak alana ulaşılamıyor — değişiklikleriniz bu bilgisayarda saklanıyor, bağlantı gelince gönderilecek':'⚠ Ortak alana ulaşılamıyor')
+    :st.pending?'⏳ Ortak alana gönderiliyor…':'🌐 Ortak alan: bağlı');
   if(e)e.innerHTML=h;const d=document.querySelector('#svd');if(d)d.innerHTML=h}
-async function flushNow(force){clearTimeout(tm);if(!DESK||(!dirty&&!force))return;dirty=false;
-  try{paintSv(await desktop.save(JSON.stringify(S)))}catch(e){dirty=true;paintSv({err:'Kayıt hatası: '+(e.message||e)})}}
-const save=()=>{dirty=true;clearTimeout(tm);
+const dk=ms=>Math.max(1,Math.round((ms||0)/60000));
+function paintMode(st){const e=document.querySelector('#modeBar');if(!e)return;
+  if(!DESK||!st||st.mode==='local'){e.className='noprint';e.innerHTML='';return}
+  const L=st.lock||{},R=st.req||{},b=(f,t,c)=>`<button class="${c||''}" onclick="dCall('${f}')">${t}</button>`;let h='',cls;
+  if(st.mode==='edit'){cls='edit';h=`✏️ <b>Düzenleme sizde.</b> Siz düzenlerken diğer kullanıcılar yalnızca görüntüleyebilir.${b('releaseEdit','Düzenlemeyi bırak')}`}
+  else{cls='view';h='👁 <b>Salt okunur.</b> ';
+    if(st.shared&&st.shared.state==='offline')h+='Ortak alana ulaşılamıyor; son alınan veri gösteriliyor.';
+    else if(L.free)h+=L.reservedFor?`Düzenleme ${esc(L.reservedFor)} kullanıcısına devrediliyor…`:`Şu an kimse düzenlemiyor. ${b('requestEdit','Düzenlemeye başla','pr')}`;
+    else if(L.stale)h+=`<b>${esc(L.by)}</b> düzenliyordu ama yaklaşık ${dk(L.ageMs)} dakikadır bağlantısı yok. ${b('takeover','Düzenlemeyi devral','pr')}`;
+    else if(L.by){h+=`Şu an <b>${esc(L.by)}</b> düzenliyor${L.since?' ('+fdt(L.since)+' itibarıyla)':''}. Yapılan değişiklikler ekranınıza kendiliğinden gelir. `;
+      h+=R.mine?`⏳ İsteğiniz iletildi, cevap bekleniyor… ${b('cancelRequest','İsteği geri al')}`:b('requestEdit','Düzenleme hakkını iste','pr')}
+    else h+='Ortak alan kontrol ediliyor…';
+    if(R.denied)h+=` <span class="bad">${esc(R.by||'Düzenleyen kişi')} isteğinizi kabul etmedi.</span> ${b('dismissNotice','Tamam')}`}
+  if(st.notice)h+=` <span class="note">ℹ ${esc(st.notice)}</span> ${b('dismissNotice','Kapat')}`;
+  e.className='noprint on '+cls;e.innerHTML=h}
+function onSt(st){if(!st)return;ST=st;paintSv(st);const ro=st.mode==='view';
+  if(ro!==RO){if(!ro)flushNow(false);RO=ro;document.body.classList.toggle('ro',RO);if(RO){clearTimeout(tm);dirty=false;if(RO_TABS.includes(T))T='genel'}render()}
+  const rb=document.getElementById('rfBtn');if(rb)rb.textContent=RO?'⟳ Yenile':'⟳ Kaydet ve Yenile';
+  paintMode(st)}
+async function dCall(fn){try{const s=await desktop[fn]();if(s&&s.mode)onSt(s)}catch(e){alert(e.message||e)}}
+async function flushNow(force){clearTimeout(tm);if(!DESK||RO||(!dirty&&!force))return;dirty=false;
+  const j=JSON.stringify(S);
+  try{const r=await desktop.save(j);if(r&&!r.rejected&&!r.stale)LASTJ=j;if(r&&r.rejected){roRevert()}onSt(r)}catch(e){dirty=true;paintSv({...(ST||{}),err:'Kayıt hatası: '+(e.message||e)})}}
+const save=()=>{if(RO){roRevert();return}dirty=true;clearTimeout(tm);
   if(DESK){tm=setTimeout(flushNow,400)}
   else{try{localStorage.setItem('ilacdb',JSON.stringify(S));localStorage.setItem('ilacdb_ts',new Date().toISOString())}catch(e){}tm=setTimeout(writeF,400);paintSv({lastSavedAt:new Date().toISOString()})}};
 const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('ilacfs',1);r.onupgradeneeded=()=>r.result.createObjectStore('h');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
@@ -628,7 +664,7 @@ function closeMenu(){MENU=false;const pn=document.getElementById('menuPanel');if
 document.addEventListener('click',e=>{if(MENU&&!(e.target.closest&&e.target.closest('#tabs')))closeMenu()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MENU)closeMenu()});
 function tabs(){
-  const t=[['genel','Tüm Müşteriler'],['musteri','Müşteri Detay'],['karsi','Bütçe Karşılaştırma'],['aylik','Aylık Rapor'],['degisim','Sipariş Değişiklikleri'],['arsiv','Arşiv'],['yukle','Excel Yükle'],['manuel','Manuel Giriş'],['grafik','Grafik'],['tanim','Müşteri Tanımla'],['urun','Ürün / Parti Tanımı'],['sil','Veri Sil'],['rapor','Yedek / Rapor']];
+  const t=[['genel','Tüm Müşteriler'],['musteri','Müşteri Detay'],['karsi','Bütçe Karşılaştırma'],['aylik','Aylık Rapor'],['degisim','Sipariş Değişiklikleri'],['arsiv','Arşiv'],['yukle','Excel Yükle'],['manuel','Manuel Giriş'],['grafik','Grafik'],['tanim','Müşteri Tanımla'],['urun','Ürün / Parti Tanımı'],['sil','Veri Sil'],['rapor','Yedek / Rapor']].filter(x=>!(RO&&RO_TABS.includes(x[0])));
   const curLabel=((t.find(x=>x[0]===T)||['',''])[1])+(T==='musteri'&&cur&&S.customers.some(c=>c.id===cur)?' — '+esc(cname(cur)):'');
   $('#tabs').innerHTML=`<button class="hamb" onclick="toggleMenu(event)" aria-label="Menü">☰ Menü</button><span class="curtab">${curLabel}</span><div id="menuPanel" class="${MENU?'open':''}">${t.map(([k,l])=>k==='musteri'?menuCustGroup(l):`<button class="${T===k?'on':''}" onclick="T='${k}';MENU=false;render()">${l}</button>`).join('')}</div>`;}
 
@@ -965,17 +1001,19 @@ function delItem(i){
   ts.forEach(t=>{if(t==='actual'){if(S.actual[DS])delete S.actual[DS][e.k];if(S.series[DS])delete S.series[DS][e.k]}else S[t][DS]=(S[t][DS]||[]).filter(it=>(it.code||it.name)!==e.k)});
   save();render();}
 let DI=null;
-async function dAct(fn){try{await desktop[fn]()}catch(e){alert(e.message||e)}DI=await desktop.info();render()}
-function deskCard(){if(!DI)desktop.info().then(i=>{DI=i;if(T==='rapor')render()});const i=DI||{};
-  return `<div class="card"><h3>Kayıt ve ortak alan (masaüstü uygulaması)</h3>
-  <p class="hint">Her değişiklik internet gerekmeden bu bilgisayardaki uygulama klasörüne otomatik kaydedilir ve düzenli yedeklenir. İsterseniz ortak bir ağ klasörü seçin; kayıtlar oraya da yazılır. Ortak klasöre erişilemezse veriler yerelde saklanır, erişim gelince otomatik gönderilir.</p>
-  <div class="row"><button class="pr" onclick="flushNow(true)">Şimdi kaydet</button><button onclick="dAct('chooseShared')">Ortak klasör seç…</button><button onclick="dAct('syncShared')">Ortak ile eşitle</button>${i.sharedDir?'<button onclick="dAct(\'clearShared\')">Ortak bağlantıyı kaldır</button>':''}</div>
-  <div><b>Son kayıt:</b> <span id="svd"></span></div>
-  <div><b>Yerel kayıt dosyası:</b> ${esc(i.dataFile||'')}</div>
+async function dAct(fn){try{const s=await desktop[fn]();if(s&&s.mode)onSt(s)}catch(e){alert(e.message||e)}DI=await desktop.info();render();if(ST)paintSv(ST)}
+function deskCard(){if(!DI)desktop.info().then(i=>{DI=i;if(T==='rapor')render()});const i=DI||{},sh=!!i.sharedDir;
+  return `<div class="card"><h3>Kayıt ve ortak alan</h3>
+  <p class="hint">${sh?'Asıl kayıt <b>ortak klasördedir</b>. Aynı anda yalnızca bir kişi düzenleyebilir; diğerleri salt okunur görür ve değişiklikler ekranlarına kendiliğinden gelir. Düzenleyen kişi programı kapatınca ya da “Düzenlemeyi bırak” deyince sıra başkasına geçer. Her kayıt ortak alana yazıldıktan sonra geri okunup doğrulanır; ortak klasörde sürüm ve günlük yedekler ile kimin ne zaman kaydettiğini gösteren kayıt defteri tutulur.'
+    :'Şu an veriler yalnızca bu bilgisayarda. Birden fazla kişinin kullanması için şirket ağındaki paylaşım klasörünü (ör. \\\\sunucu\\paylasim\\IlacSiparis) seçin. OneDrive / Google Drive klasörü önerilmez: eşitleme gecikmesi yüzünden aynı anda iki kişi düzenleyebilir.'}</p>
+  <div class="row">${RO?'':'<button class="pr" onclick="flushNow(true)">Şimdi kaydet</button>'}<button onclick="dAct('chooseShared')">${sh?'Ortak klasörü değiştir…':'Ortak klasör seç…'}</button>${sh?'<button onclick="dAct(\'refreshShared\')">Ortak alanı şimdi kontrol et</button><button onclick="dAct(\'clearShared\')">Ortak bağlantıyı kaldır</button>':''}</div>
+  <div><b>Durum:</b> <span id="svd"></span></div>
   <div><b>Ortak klasör:</b> ${esc(i.sharedDir||'Seçilmedi')}</div>
-  <div class="row"><button onclick="desktop.openDataDir()">Veri klasörünü aç</button><button onclick="desktop.openBackups()">Yedekler klasörünü aç</button></div>
-  <p class="hint">Ortak klasörde aynı anda iki kişi değişiklik yaparsa uygulama çakışmayı fark eder ve hangi sürümün korunacağını sorar; diğer sürüm yedeklere alınır. Verileri birleştirmez; mümkünse aynı anda tek kişi düzenlesin.</p></div>`}
+  <div><b>Bu bilgisayardaki ${sh?'önbellek':'kayıt'} dosyası:</b> ${esc(i.dataFile||'')}</div>
+  <div class="row" style="margin-top:8px">${sh?'<button onclick="desktop.openSharedBackups()">Ortak yedekler klasörünü aç</button><button onclick="desktop.openLog()">Kayıt defterini aç</button>':''}<button onclick="desktop.openDataDir()">Veri klasörünü aç</button><button onclick="desktop.openBackups()">Bu bilgisayardaki yedekleri aç</button></div>
+  ${sh?'<p class="hint">Bağlantı koparsa düzenleyen kişinin değişiklikleri bu bilgisayarda saklanır ve bağlantı gelince gönderilir. Bu arada düzenleme hakkı başkasına geçtiyse hiçbir veri ezilmez: gönderilemeyen değişiklikler “yedekler” klasörüne <b>cakisma_…</b> adıyla ayrı kopya olarak alınır.</p>':''}</div>`}
 function vRapor(){
+  if(DESK&&RO)return deskCard()+`<div class="card"><p class="hint">Salt okunur moddasınız: yedek alma, geri yükleme, Excel ve PDF çıktıları yalnızca düzenleme hakkı olan kişide açıktır.</p></div>`;
   return (DESK?deskCard():`<div class="card"><h3>Veri dosyası (otomatik kayıt)</h3>
   <p class="hint">Bir JSON dosyası seçin; yaptığınız her değişiklik otomatik olarak bu dosyaya yazılır. Dosyayı OneDrive/USB gibi güvenli bir klasörde tutabilirsiniz. (Chrome/Edge gerekir.)</p>
   <div class="row"><button class="pr" onclick="newFile()">Yeni veri dosyası oluştur</button><button onclick="openFile()">Mevcut veri dosyasını aç</button></div>
@@ -1089,11 +1127,27 @@ async function exportX(){
   const buf=await wb.xlsx.writeBuffer();
   dl(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'siparis_rapor_'+new Date().toISOString().slice(0,10)+'.xlsx');}
 
-function render(){tabs();$('#app').innerHTML=bn()+({genel:vGenel,musteri:vMusteri,karsi:vKarsi,fiili:vFiili,yukle:vYukle,tanim:vTanim,manuel:vManuel,grafik:vGrafik,urun:vUrun,aylik:vAylik,degisim:vDegisim,arsiv:vArsiv,sil:vSil,rapor:vRapor})[T]()}
+function roDecorate(){if(!RO)return;
+  document.querySelectorAll('#app input[type=file]').forEach(el=>{const c=el.closest('.card');if(c)c.style.display='none'});
+  document.querySelectorAll('#app [onclick],#app [onchange]').forEach(el=>{const h=(el.getAttribute('onclick')||'')+' '+(el.getAttribute('onchange')||'');
+    if(RO_RE.test(h)){if(el.tagName==='BUTTON')el.style.display='none';else el.disabled=true}});
+  document.querySelectorAll('#app input,#app textarea').forEach(el=>{el.disabled=true;el.readOnly=true})}
+function render(){if(RO&&RO_TABS.includes(T))T='genel';tabs();$('#app').innerHTML=bn()+({genel:vGenel,musteri:vMusteri,karsi:vKarsi,fiili:vFiili,yukle:vYukle,tanim:vTanim,manuel:vManuel,grafik:vGrafik,urun:vUrun,aylik:vAylik,degisim:vDegisim,arsiv:vArsiv,sil:vSil,rapor:vRapor})[T]();roDecorate();if(DESK&&ST&&T==='rapor')paintSv(ST)}
 migrateOrders();
 if(!cur&&S.customers.length)cur=S.customers[0].id;
 render();
-if(DESK){desktop.onStatus(paintSv);desktop.onFlush(()=>flushNow(true));desktop.onSaveNow(()=>flushNow(true));paintSv(desktop.status0);desktop.info().then(i=>DI=i)}
+if(DESK){document.body.classList.toggle('ro',RO);
+  desktop.onStatus(onSt);desktop.onFlush(()=>flushNow(true));desktop.onSaveNow(()=>{if(RO)roMsg();else flushNow(true)});
+  // Ortak alandan yeni veri geldi: ekranı aynı sekme ve kaydırma konumunda yenile
+  desktop.onData(j=>{let d;try{d=JSON.parse(j)}catch(e){return}LASTJ=j;clearTimeout(tm);dirty=false;const y=window.scrollY;S=d;fixS();migrateOrders();
+    if(cur&&cur!=='all'&&!S.customers.some(c=>c.id===cur))cur=S.customers[0]?S.customers[0].id:null;render();window.scrollTo(0,y)});
+  onSt(desktop.status0);desktop.info().then(i=>DI=i);
+  // Salt okunur: düzenleme işlevleri, yazdırma ve kopyalama kapalı
+  RO_FN.forEach(n=>{const f=window[n];if(typeof f!=='function')return;window[n]=function(){if(RO){roMsg();return}return f.apply(this,arguments)}});
+  const _print=window.print.bind(window);window.print=function(){if(RO){roMsg();return}_print()};
+  document.addEventListener('keydown',e=>{if(!RO||!(e.ctrlKey||e.metaKey))return;const k=e.key.toLowerCase();if(['p','s','c','x','a'].includes(k)){e.preventDefault();e.stopPropagation();if(k==='p'||k==='s')roMsg()}},true);
+  document.addEventListener('copy',e=>{if(RO){e.preventDefault()}},true);
+  document.addEventListener('contextmenu',e=>{if(RO)e.preventDefault()},true)}
 else paintSv({lastSavedAt:localStorage.getItem('ilacdb_ts')});
 (async()=>{if(DESK)return;const h=await hGet();if(!h)return;FH=h;
   try{if(await FH.queryPermission({mode:'readwrite'})==='granted'){if(await readF())FS='Dosyadan yüklendi: '+FH.name;else FS='Bağlı: '+FH.name}else{NEEDP=true;FS='İzin gerekli — yeniden bağlanın'}}catch(e){NEEDP=true}
