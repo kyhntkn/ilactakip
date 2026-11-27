@@ -29,6 +29,8 @@ th,td{border:1px solid #e1e6eb;padding:4px 8px;text-align:right}th{background:#e
 td.l,th.l{text-align:left}tr.t td{font-weight:700;background:#f1f5f9}.pos{color:#1f7a4d}.neg{color:#b3261e}
 td input{width:70px;text-align:right;padding:2px 4px;border:1px solid #ccd}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
 .hint{color:#5b6b7a;font-size:13px}
+input.sumro{background:#e8eef4;color:#1c2630}
+table.fatt{width:auto;margin:0 0 0 8px;border-left:3px solid #b9c7d6}table.fatt th,table.fatt td{font-size:13px;padding:3px 6px}
 @page{size:A4 landscape;margin:8mm}
 @media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}nav,header,.noprint{display:none!important}body{background:#fff;font-size:9px}
 main{padding:0}.card{border:0;padding:0;overflow:visible;margin-bottom:8px}table{font-size:7px;width:100%}th,td{padding:1px 3px}th{position:static}
@@ -84,7 +86,7 @@ let FH=null,FS='Bağlı değil',NEEDP=false,tm;
 // Değiştirme, Excel/PDF/yazdırma, yedek indirme ve kopyalama kapalıdır.
 let RO=DESK&&!!(window.desktop.status0&&window.desktop.status0.mode==='view'),LASTJ=DESK?window.desktop.initial:null,ST=DESK?window.desktop.status0:null;
 const RO_TABS=['yukle','manuel','tanim','urun','sil'];
-const RO_FN=['upload','upload12','wipe','resetSer','renC','editMNoteEl','delSer','delProd','delItem','delC','delArc','restore','addSerRow','addProd','addOrdRow','addC','setSer','setPNoteEl','setOrdEl','setBatch','setA','printRep','printGrafik','exportX','exportDegisim','exportAy','backup'];
+const RO_FN=['upload','upload12','wipe','resetSer','renC','editMNoteEl','delSer','delProd','delItem','delC','delArc','restore','addSerRow','addFat','setFat','delFat','addProd','addOrdRow','addC','setSer','setPNoteEl','setOrdEl','setBatch','setA','printRep','printGrafik','exportX','exportDegisim','exportAy','backup'];
 const RO_RE=new RegExp('\\b('+RO_FN.join('|')+'|print|flushNow)\\(');
 let roT;function roMsg(m){const e=document.getElementById('roToast');if(!e)return;e.textContent=m||'Salt okunur moddasınız — bu işlem yapılamaz. Düzenlemek için üstteki şeritten düzenleme hakkını isteyin.';e.style.display='block';clearTimeout(roT);roT=setTimeout(()=>e.style.display='none',3500)}
 function roRevert(){if(LASTJ){try{S=JSON.parse(LASTJ);fixS();migrateOrders()}catch(e){}}roMsg();render()}
@@ -167,11 +169,15 @@ function tlPart(raw){raw=String(raw);
     return (ip?tgrp(ip):'')+','+fp}
   const d=raw.replace(/\D/g,'');if(!d)return '';
   return tgrp(d.slice(0,-2)||'0')+','+d.slice(-2).padStart(2,'0')}
+// "+" ile yazılan değerler toplanır (ör. 50.000+30.000 → 80.000); önceden "+" yok sayılıp sayılar birleşiyordu.
+function sumParts(raw,fn,dec){const ps=raw.split('+').map(fn).filter(v=>v!=='');if(!ps.length)return '';const k=Math.pow(10,dec);return Math.round(ps.reduce((a,b)=>a+b,0)*k)/k}
 function qVal(raw){raw=String(raw==null?'':raw).trim();if(!raw)return '';
+  if(raw.includes('+'))return sumParts(raw,qVal,6);
   if(raw.includes(',')){const k=raw.indexOf(',');const ip=raw.slice(0,k).replace(/\D/g,'')||'0',fp=raw.slice(k+1).replace(/\D/g,'');return parseFloat(ip+'.'+(fp||'0'))}
   const d=raw.replace(/\D/g,'');return d?parseInt(d,10):''}
 function tlIn(el){const v=tlPart(el.value);if(v!==el.value)el.value=v}
 function tlVal(raw){raw=String(raw==null?'':raw).trim();if(!raw)return '';
+  if(raw.includes('+'))return sumParts(raw,tlVal,2);
   if(raw.includes(',')){const k=raw.indexOf(',');const ip=raw.slice(0,k).replace(/\D/g,'')||'0',fp=raw.slice(k+1).replace(/\D/g,'').slice(0,2);
     return parseFloat(ip+'.'+(fp||'0'))}
   const d=raw.replace(/\D/g,'');if(!d)return '';return parseInt(d,10)/100}
@@ -503,7 +509,7 @@ function serSetN(b,n,calc){S.serN=S.serN||{};const key=b.c+'|'+b.k+'|'+mkey(S.st
 function delSer(bi,j){const b=SB[bi];if(!b)return;const inf=serInfo(b.c,b.k,b.i);
   if(!confirm((j+1)+'. seri satırı silinsin mi?\nAltındaki satırlar yukarı kayar. (Varsayılana dönmek için "↺ Satırları yeniden oluştur" kullanılabilir.)'))return;
   const kk=((S.series||{})[b.c]||{})[b.k],arr=kk&&kk[inf.mk];if(arr&&j<arr.length)arr.splice(j,1);
-  serSetN(b,inf.count-1,inf.calc);serSync(b);save();render()}
+  FX.clear();serSetN(b,inf.count-1,inf.calc);serSync(b);save();render()}
 function addSerRow(bi){const b=SB[bi];if(!b)return;const inf=serInfo(b.c,b.k,b.i);serSetN(b,inf.count+1,inf.calc);save();render()}
 function resetSer(bi){const b=SB[bi];if(!b)return;serSetN(b,null);serSync(b);save();render()}
 function setSer(bi,r,f,v){const b=SB[bi];if(!b)return;
@@ -513,23 +519,66 @@ function setSer(bi,r,f,v){const b=SB[bi];if(!b)return;
   arr[r][f]=(f==='n'||f==='p'||f==='d')?v:(String(v).trim()===''?'':(parseFloat(String(v).replace(',','.'))||0));
   const inf=serInfo(b.c,b.k,b.i);
   if(inf.has||f==='q'){S.actual[b.c]=S.actual[b.c]||{};const a=S.actual[b.c][b.k]=S.actual[b.c][b.k]||z();a[b.i]=inf.has?inf.q:0}
-  save();
+  save();serTot(bi,inf)}
+function serTot(bi,inf){
   const tq=document.getElementById('tq'+bi),tt=document.getElementById('tt'+bi);
   if(tq)tq.textContent=fq(inf.q);if(tt)tt.textContent=fmt2(inf.t);
   const sc=document.getElementById('sumc');if(sc)sc.innerHTML='<h3>Özet</h3>'+summary(entries(cur))}
+// ── Aynı seri için birden fazla fatura ──
+// Satıra bağlı liste: x.f=[{q,t,d}]. Satırın q (miktar), t (tutar) ve d (fatura tarihi) değerleri her değişiklikte
+// bu listeden yeniden hesaplanır: q,t = toplam, d = en son fatura tarihi. Diğer sayfalar / raporlar / Excel çıktıları
+// yalnızca satırın q,t,d değerlerini okuduğu için oralarda bugünkü gibi toplamlar görünür. Parti No satırda tek kalır.
+let FX=new Set();
+const fxKey=(b,j)=>b.c+'|'+b.k+'|'+mkey(S.start.y,S.start.m,b.i)+'|'+j;
+function serRow(b,j){const mk=mkey(S.start.y,S.start.m,b.i);S.series[b.c]=S.series[b.c]||{};
+  const kk=S.series[b.c][b.k]=S.series[b.c][b.k]||{},arr=kk[mk]=kk[mk]||[];
+  while(arr.length<=j)arr.push({q:'',t:'',n:''});return arr[j]}
+const hasV=v=>v!==''&&v!==undefined&&v!==null;
+function fatCalc(x){let q=0,t=0,hq=false,ht=false,d='';
+  (x.f||[]).forEach(y=>{if(hasV(y.q)){q+=+y.q||0;hq=true}if(hasV(y.t)){t+=+y.t||0;ht=true}if(y.d&&y.d>d)d=y.d});
+  x.q=hq?Math.round(q*1e6)/1e6:'';x.t=ht?Math.round(t*100)/100:'';x.d=d}
+function togFat(bi,j){const b=SB[bi];if(!b)return;const key=fxKey(b,j);if(FX.has(key))FX.delete(key);else FX.add(key);render()}
+function addFat(bi,j){const b=SB[bi];if(!b)return;const x=serRow(b,j);
+  if(!x.f){x.f=[];if(hasV(x.q)||hasV(x.t)||x.d)x.f.push({q:hasV(x.q)?x.q:'',t:hasV(x.t)?x.t:'',d:x.d||''})} // mevcut giriş 1. fatura olur
+  x.f.push({q:'',t:'',d:''});fatCalc(x);FX.add(fxKey(b,j));serSync(b);save();render();
+  const el=document.getElementById('fi'+bi+'_'+j+'_'+(x.f.length-1));if(el)el.focus()}
+function setFat(bi,j,i,fld,v){const b=SB[bi];if(!b)return;const x=serRow(b,j);if(!x.f||!x.f[i])return;
+  x.f[i][fld]=v;fatCalc(x);serSync(b);save();fatPaint(bi,j,x)}
+function delFat(bi,j,i){const b=SB[bi];if(!b)return;const x=serRow(b,j);if(!x.f||!x.f[i])return;
+  if(!confirm((i+1)+'. fatura silinsin mi?'))return;
+  x.f.splice(i,1);if(x.f.length)fatCalc(x);else{delete x.f;x.q='';x.t='';x.d='';FX.delete(fxKey(b,j))}
+  serSync(b);save();render()}
+function fatWarn(bi,x){const bt=(SB[bi]||{}).batch;return bt&&hasV(x.q)&&+x.q>bt?`⚠ Toplam miktar parti büyüklüğünü (${fq(bt)}) aşıyor`:''}
+function fatPaint(bi,j,x){const g=id=>document.getElementById(id+bi+'_'+j);
+  const sq=g('sq'),st=g('st'),sd=g('sd'),fq0=g('fq'),ft=g('ft'),fw=g('fw');
+  if(sq)sq.value=hasV(x.q)?fq(+x.q):'';if(st)st.value=hasV(x.t)?fmt2(+x.t):'';if(sd)sd.value=x.d||'';
+  if(fq0)fq0.textContent=fq(+x.q||0);if(ft)ft.textContent=fmt2(+x.t||0);if(fw)fw.textContent=fatWarn(bi,x);
+  const b=SB[bi];if(b)serTot(bi,serInfo(b.c,b.k,b.i))}
+function fatRows(bi,j,x){
+  let s=`<tr class="fatr"><td></td><td colspan="5" style="padding:4px 0 10px;text-align:left"><table class="fatt"><tr><th class="l">Fatura</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Fatura Tarihi</th><th class="noprint"></th></tr>`;
+  x.f.forEach((y,i)=>{s+=`<tr><td class="l">${i+1}. fatura</td><td><input id="fi${bi}_${j}_${i}" type="text" inputmode="decimal" autocomplete="off" style="width:110px;text-align:right" value="${hasV(y.q)?fq(+y.q):''}" onchange="setFat(${bi},${j},${i},'q',qVal(this.value));this.value=qVal(this.value)===''?'':fq(qVal(this.value))"></td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:140px;text-align:right" value="${hasV(y.t)?fmt2(+y.t):''}" onchange="setFat(${bi},${j},${i},'t',tlVal(this.value));this.value=this.value?fmt2(tlVal(this.value)):''"></td><td class="l"><input type="date" style="width:140px" value="${esc(y.d||'')}" onchange="setFat(${bi},${j},${i},'d',this.value)"></td><td class="noprint"><button title="Bu faturayı sil" onclick="delFat(${bi},${j},${i})" style="padding:2px 7px;color:#b3261e">🗑</button></td></tr>`});
+  s+=`<tr class="t"><td class="l">Toplam</td><td id="fq${bi}_${j}">${fq(+x.q||0)}</td><td id="ft${bi}_${j}">${fmt2(+x.t||0)}</td><td class="l hint">Satırda son fatura tarihi</td><td class="noprint"></td></tr></table>
+  <div class="noprint" style="margin-top:4px"><button onclick="addFat(${bi},${j})" style="padding:2px 8px">+ Fatura ekle</button> <span id="fw${bi}_${j}" class="neg">${fatWarn(bi,x)}</span></div></td><td class="noprint"></td></tr>`;
+  return s}
 function vSeri(l){
   if(!S.start)return '';
   if(SM<0||SM>=N)SM=0;
   let r=`<div class="card"><h3>Aylık parti / fiili girişi</h3><div class="row"><label>Ay: <select onchange="SM=+this.value;render()">${M().map((m,i)=>`<option value="${i}" ${SM===i?'selected':''}>${esc(m)}</option>`).join('')}</select></label>
-  <span class="hint">Sipariş ÷ parti büyüklüğü kadar seri satırı açılır. Satırlardaki Fiili Miktar toplamı, Fiili tablosuna otomatik aktarılır.</span></div>`;
+  <span class="hint">Sipariş ÷ parti büyüklüğü kadar seri satırı açılır. Satırlardaki Fiili Miktar toplamı, Fiili tablosuna otomatik aktarılır. Aynı seriye birden fazla fatura kesildiyse 🧾 ile faturaları ayrı ayrı girin; satırda toplam miktar / tutar ve son fatura tarihi görünür.</span></div>`;
   SB=[];const items=l.filter(e=>e.o[SM]>0);
   if(!items.length)return r+'<p class="hint">Bu ay için sipariş yok.</p></div>';
-  items.forEach(e=>{const bi=SB.length;SB.push({c:e.cid,k:e.k,i:SM});const inf=serInfo(e.cid,e.k,SM);
+  items.forEach(e=>{const bi=SB.length;SB.push({c:e.cid,k:e.k,i:SM,batch:0});const inf=serInfo(e.cid,e.k,SM);SB[bi].batch=inf.batch;
     r+=`<div style="margin:12px 0 18px"><div><b>${esc(e.name)}</b> <span class="hint">(${esc(e.code)})</span> — Sipariş: <b>${fq(inf.q0)}</b> kutu`+
     (inf.batch?` · Parti: <b>${fq(inf.batch)}</b> kutu · İstenen seri: <b>${inf.calc}</b>`+(inf.count!==inf.calc?` · Gösterilen: <b>${inf.count}</b>`:'')+(inf.q0%inf.batch?` <span class="hint">(${(inf.q0/inf.batch).toLocaleString('tr-TR',{maximumFractionDigits:2})} seri, yukarı yuvarlandı)</span>`:''):' · <span class="neg">Parti büyüklüğü tanımlı değil ("Ürün / Parti Tanımı" sekmesi)</span>')+(inf.batch?` <span class="noprint"><button onclick="addSerRow(${bi})" style="padding:2px 8px;margin-left:8px">+ Satır ekle</button>${inf.count!==inf.calc?` <button onclick="resetSer(${bi})" style="padding:2px 8px">↺ Satırları yeniden oluştur</button>`:''}</span>`:'')+'</div>';
     if(inf.count){r+=`<table style="width:auto;margin-top:6px"><tr><th class="l">Seri</th><th>Fiili Miktar</th><th>Tutar TL</th><th class="l">Parti No</th><th class="l">Fatura Tarihi</th><th class="l">Açıklama</th><th class="noprint"></th></tr>`;
       for(let j=0;j<inf.count;j++){const x=inf.rows[j]||{},qv=x.q===''||x.q===undefined?'':x.q,tv=x.t===''||x.t===undefined?'':x.t;
-        r+=`<tr><td class="l">${j+1}. seri</td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:120px;text-align:right" value="${qv===''||qv==null?'':fq(+qv)}" onchange="setSer(${bi},${j},'q',qVal(this.value));this.value=qVal(this.value)===''?'':fq(qVal(this.value))"></td><td><input type="text" inputmode="decimal" autocomplete="off" style="width:150px;text-align:right" value="${tv===''||tv==null?'':fmt2(+tv)}" onchange="setSer(${bi},${j},'t',tlVal(this.value));this.value=this.value?fmt2(tlVal(this.value)):''"></td><td class="l"><input type="text" style="width:130px" value="${esc(x.p||'')}" onchange="setSer(${bi},${j},'p',this.value)"></td><td class="l"><input type="date" value="${esc(x.d||'')}" onchange="setSer(${bi},${j},'d',this.value)"></td><td class="l"><input type="text" style="width:260px" value="${esc(x.n||'')}" onchange="setSer(${bi},${j},'n',this.value)"></td><td class="noprint"><button title="Bu satırı sil" onclick="delSer(${bi},${j})" style="padding:2px 7px;color:#b3261e">🗑</button></td></tr>`}
+        const hf=!!(x.f&&x.f.length),open=hf&&FX.has(fxKey(SB[bi],j)),RS='readonly tabindex="-1" class="sumro" title="Faturalardan otomatik (🧾)"';
+        const qIn=hf?`<input id="sq${bi}_${j}" type="text" ${RS} style="width:120px;text-align:right" value="${qv===''||qv==null?'':fq(+qv)}">`:`<input type="text" inputmode="decimal" autocomplete="off" style="width:120px;text-align:right" value="${qv===''||qv==null?'':fq(+qv)}" onchange="setSer(${bi},${j},'q',qVal(this.value));this.value=qVal(this.value)===''?'':fq(qVal(this.value))">`;
+        const tIn=hf?`<input id="st${bi}_${j}" type="text" ${RS} style="width:150px;text-align:right" value="${tv===''||tv==null?'':fmt2(+tv)}">`:`<input type="text" inputmode="decimal" autocomplete="off" style="width:150px;text-align:right" value="${tv===''||tv==null?'':fmt2(+tv)}" onchange="setSer(${bi},${j},'t',tlVal(this.value));this.value=this.value?fmt2(tlVal(this.value)):''">`;
+        const dIn=hf?`<input id="sd${bi}_${j}" type="date" ${RS} style="width:140px" value="${esc(x.d||'')}">`:`<input type="date" value="${esc(x.d||'')}" onchange="setSer(${bi},${j},'d',this.value)">`;
+        const fb=hf?`<button title="Faturaları göster / gizle" onclick="togFat(${bi},${j})" style="padding:2px 7px">🧾 ${x.f.length} fatura ${open?'▴':'▾'}</button>`:`<button title="Bu seriye ek fatura gir (mevcut giriş 1. fatura olur)" onclick="addFat(${bi},${j})" style="padding:2px 7px">🧾 +</button>`;
+        r+=`<tr><td class="l">${j+1}. seri</td><td>${qIn}</td><td>${tIn}</td><td class="l"><input type="text" style="width:130px" value="${esc(x.p||'')}" onchange="setSer(${bi},${j},'p',this.value)"></td><td class="l">${dIn}</td><td class="l"><input type="text" style="width:260px" value="${esc(x.n||'')}" onchange="setSer(${bi},${j},'n',this.value)"></td><td class="noprint" style="white-space:nowrap">${fb} <button title="Bu satırı sil" onclick="delSer(${bi},${j})" style="padding:2px 7px;color:#b3261e">🗑</button></td></tr>`;
+        if(open)r+=fatRows(bi,j,x)}
       r+=`<tr class="t"><td class="l">Toplam</td><td id="tq${bi}">${fq(inf.q)}</td><td id="tt${bi}">${fmt2(inf.t)}</td><td></td><td></td><td></td><td class="noprint"></td></tr></table>`}
     r+='</div>'});
   return r+'</div>'}
